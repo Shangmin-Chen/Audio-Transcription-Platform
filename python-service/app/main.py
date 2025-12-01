@@ -2,9 +2,10 @@
 FastAPI application for the Whisperrr transcription service.
 
 This module serves as the main entry point for the Whisperrr Python transcription service,
-which provides high-quality speech-to-text capabilities using OpenAI's Whisper library.
+which provides high-quality speech-to-text capabilities using Faster Whisper (faster-whisper).
 The service is designed as a production-ready microservice that can be deployed independently
-and integrated with the Spring Boot backend API.
+and integrated with the Spring Boot backend API. Faster Whisper is up to 4x faster than OpenAI
+Whisper with less memory usage, powered by CTranslate2.
 
 Architecture Overview:
     The service follows a layered architecture pattern:
@@ -14,7 +15,7 @@ Architecture Overview:
     - Configuration Layer: Environment-based configuration management
 
 Key Features:
-    - High-quality transcription using OpenAI Whisper models
+    - High-quality transcription using Faster Whisper models (up to 4x faster)
     - Asynchronous processing with ThreadPoolExecutor
     - Multiple audio format support (MP3, WAV, M4A, FLAC, OGG)
     - Dynamic model loading and caching
@@ -22,6 +23,7 @@ Key Features:
     - Performance monitoring and metrics
     - CORS configuration for cross-origin requests
     - Health checks and service monitoring
+    - Optimized inference with CTranslate2 (CPU and GPU support)
 
 Processing Flow:
     1. Client uploads audio file via POST /transcribe
@@ -290,7 +292,7 @@ async def transcribe_audio(
     correlation_id: str = Depends(get_correlation_id_dependency)
 ):
     """
-    Transcribe an audio file using OpenAI's Whisper model.
+    Transcribe an audio file using Faster Whisper model.
     
     This endpoint provides high-quality speech-to-text transcription for uploaded
     audio files. It supports multiple audio formats and provides detailed results
@@ -317,6 +319,8 @@ async def transcribe_audio(
         - small: Better accuracy, slower (244 MB)
         - medium: Good accuracy, slower (769 MB)
         - large: Best accuracy, slowest (1550 MB)
+        - large-v2: Latest large model variant (1550 MB)
+        - large-v3: Latest large model variant (1550 MB)
     
     Language Detection:
         - Automatic language detection if not specified
@@ -523,7 +527,7 @@ async def health_check():
 @app.get("/model/info", response_model=ModelInfoResponse)
 async def get_model_info():
     """
-    Get detailed information about the currently loaded Whisper model.
+    Get detailed information about the currently loaded Faster Whisper model.
     
     This endpoint provides comprehensive information about the active Whisper model,
     including performance metrics, capabilities, and resource usage. It's useful
@@ -578,7 +582,7 @@ async def get_model_info():
 @app.post("/model/load/{model_size}")
 async def load_model(model_size: str):
     """
-    Load a specific Whisper model size into memory.
+    Load a specific Faster Whisper model size into memory.
     
     This endpoint allows dynamic loading of different Whisper model sizes based
     on accuracy and performance requirements. Loading a new model will replace

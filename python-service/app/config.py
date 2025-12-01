@@ -134,7 +134,7 @@ class Settings(BaseSettings):
     
     # API configuration
     api_title: str = "Whisperrr Transcription Service"
-    api_description: str = "Production-ready audio transcription using OpenAI Whisper"
+    api_description: str = "Production-ready audio transcription using Faster Whisper"
     api_version: str = "1.0.0"
     cors_origins: Union[List[str], str] = ["http://localhost:8080", "http://localhost:3000", "http://127.0.0.1:8080", "http://127.0.0.1:3000"]
     

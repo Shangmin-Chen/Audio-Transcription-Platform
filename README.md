@@ -1,6 +1,6 @@
 # Whisperrr - AI-Powered Audio Transcription Platform
 
-A production-ready, full-stack audio transcription platform that leverages OpenAI's Whisper library to provide high-quality speech-to-text conversion. Built with modern technologies including Spring Boot, FastAPI, and React TypeScript.
+A production-ready, full-stack audio transcription platform that leverages Faster Whisper (faster-whisper) to provide high-quality speech-to-text conversion. Built with modern technologies including Spring Boot, FastAPI, and React TypeScript. Faster Whisper is up to 4x faster than OpenAI's Whisper with less memory usage, powered by CTranslate2.
 
 ## 🎯 Overview
 
@@ -9,7 +9,8 @@ Whisperrr transforms audio content into accurate, searchable text using state-of
 ## ✨ Key Features
 
 - **Instant Transcription**: Upload and get results immediately
-- **High Accuracy**: Powered by OpenAI's Whisper AI models (tiny to large)
+- **High Accuracy**: Powered by Faster Whisper AI models (tiny to large-v3)
+- **Fast Performance**: Up to 4x faster than OpenAI Whisper with less memory usage
 - **Multi-Language**: Support for 99+ languages with automatic detection
 - **Multiple Formats**: MP3, WAV, M4A, FLAC, OGG, WMA (up to 25MB)
 - **Stateless Architecture**: No database required - simplified deployment
@@ -32,7 +33,7 @@ Whisperrr transforms audio content into accurate, searchable text using state-of
 
 - **React Frontend**: User interface with drag-and-drop file upload
 - **Spring Boot API**: Lightweight proxy for validation and error handling
-- **Python Service**: AI-powered transcription using OpenAI Whisper models
+- **Python Service**: AI-powered transcription using Faster Whisper models (CTranslate2)
 
 ## 🚀 Quick Start
 
@@ -93,7 +94,7 @@ spring.servlet.multipart.max-file-size=25MB
 
 #### Python Service (`python-service/.env`)
 ```bash
-MODEL_SIZE=base                    # tiny, base, small, medium, large
+MODEL_SIZE=base                    # tiny, base, small, medium, large, large-v2, large-v3
 MAX_FILE_SIZE_MB=25
 CORS_ORIGINS=http://localhost:8080,http://localhost:3000
 LOG_LEVEL=INFO
@@ -139,7 +140,7 @@ curl -X POST http://localhost:8080/api/audio/transcribe \
 3. **Upload Audio**: Drag and drop or select an audio file
 4. **Get Results**: View transcription results immediately
 
-### Whisper Model Options
+### Faster Whisper Model Options
 
 | Model | Size | Speed | Accuracy | Best For |
 |-------|------|-------|----------|----------|
@@ -148,6 +149,10 @@ curl -X POST http://localhost:8080/api/audio/transcribe \
 | `small` | 244 MB | ~6x realtime | Better | Balanced quality/speed |
 | `medium` | 769 MB | ~2x realtime | High | Important content |
 | `large` | 1550 MB | ~1x realtime | Highest | Maximum accuracy |
+| `large-v2` | 1550 MB | ~1x realtime | Highest | Latest large model |
+| `large-v3` | 1550 MB | ~1x realtime | Highest | Latest large model |
+
+**Performance Note**: Faster Whisper is up to 4x faster than OpenAI Whisper with the same accuracy, using less memory. It uses CTranslate2 for optimized inference on both CPU and GPU.
 
 ## 🧪 Development
 
@@ -225,7 +230,9 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## 🙏 Acknowledgments
 
-- **OpenAI** for the Whisper models
+- **SYSTRAN** for the Faster Whisper implementation
+- **OpenAI** for the original Whisper models
+- **CTranslate2** for the fast inference engine
 - **Spring Boot Team** for the Java framework
 - **FastAPI Team** for the Python web framework
 - **React Team** for the frontend library

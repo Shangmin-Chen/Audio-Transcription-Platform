@@ -1,7 +1,7 @@
 """
-WhisperService class for managing OpenAI Whisper models and transcription.
+WhisperService class for managing Faster Whisper models and transcription.
 
-This module provides a comprehensive service layer for managing Whisper model lifecycle
+This module provides a comprehensive service layer for managing Faster Whisper model lifecycle
 and performing high-quality audio transcription. It implements a singleton pattern to
 ensure efficient resource management and provides thread-safe operations for concurrent
 transcription requests.
@@ -15,6 +15,7 @@ Key Features:
     - Memory management and cleanup
     - Support for all Whisper model sizes
     - Multi-language transcription (99+ languages)
+    - Up to 4x faster than openai-whisper with less memory usage
 
 Architecture:
     The WhisperService acts as the core transcription engine, managing:
@@ -37,6 +38,7 @@ Performance Optimization:
     - Configurable concurrency limits
     - Audio preprocessing for optimal quality
     - Performance metrics collection
+    - Faster inference using CTranslate2
 
 Error Handling:
     - Custom exception hierarchy for different error types
@@ -46,7 +48,7 @@ Error Handling:
     - Retry logic for transient failures
 
 Author: shangmin
-Version: 1.0
+Version: 2.0
 Since: 2024
 """
 
@@ -57,8 +59,7 @@ import threading
 from datetime import datetime
 from typing import Optional, Dict, Any, List
 from concurrent.futures import ThreadPoolExecutor
-import whisper
-import torch
+from faster_whisper import WhisperModel
 
 from .config import settings
 from .models import (
@@ -85,7 +86,7 @@ logger = logging.getLogger(__name__)
 
 class WhisperService:
     """
-    Singleton service for managing Whisper models and transcription operations.
+    Singleton service for managing Faster Whisper models and transcription operations.
     
     This class serves as the central coordinator for all Whisper-related operations
     in the transcription service. It implements a singleton pattern to ensure
@@ -93,7 +94,7 @@ class WhisperService:
     transcription requests.
     
     Core Responsibilities:
-        - Model Lifecycle Management: Loading, caching, and unloading Whisper models
+        - Model Lifecycle Management: Loading, caching, and unloading Faster Whisper models
         - Transcription Orchestration: Managing the complete transcription pipeline
         - Resource Management: Efficient memory usage and cleanup
         - Concurrency Control: Thread-safe operations with proper synchronization
@@ -121,6 +122,7 @@ class WhisperService:
         - small: 244 MB, better accuracy, moderate speed
         - medium: 769 MB, high accuracy, slower processing
         - large: 1550 MB, highest accuracy, slowest processing
+        - large-v2, large-v3: Latest large model variants
     
     Performance Features:
         - Model caching to avoid repeated loading
@@ -129,6 +131,7 @@ class WhisperService:
         - Memory usage monitoring
         - Processing time tracking
         - Automatic resource cleanup
+        - Faster inference with CTranslate2 (up to 4x faster)
     
     Language Support:
         Supports 99+ languages including:
@@ -164,7 +167,7 @@ class WhisperService:
     Attributes:
         _instance: Singleton instance reference
         _lock: Thread lock for singleton creation
-        _model: Currently loaded Whisper model
+        _model: Currently loaded Faster Whisper model
         _model_size: Size of currently loaded model
         _model_load_time: Timestamp when model was loaded
         _is_loading: Flag indicating model loading in progress
@@ -173,6 +176,8 @@ class WhisperService:
         _executor: ThreadPoolExecutor for async operations
         _model_descriptions: Human-readable model descriptions
         _supported_languages: List of supported language codes
+        _device: Device used for inference (cuda or cpu)
+        _compute_type: Compute type for inference (float16, int8, etc.)
     """
     
     _instance = None
@@ -205,7 +210,7 @@ class WhisperService:
         """
         Initialize the WhisperService singleton instance.
         
-        This method sets up the service state and resources needed for Whisper
+        This method sets up the service state and resources needed for Faster Whisper
         model management and transcription operations. It's designed to be called
         only once due to the singleton pattern.
         
@@ -214,21 +219,25 @@ class WhisperService:
             2. Initialize core state variables
             3. Set up ThreadPoolExecutor for async operations
             4. Configure model descriptions and language support
-            5. Log successful initialization
+            5. Detect device and compute type
+            6. Log successful initialization
         
         State Variables:
-            - _model: Currently loaded Whisper model (None initially)
+            - _model: Currently loaded Faster Whisper model (None initially)
             - _model_size: Size of loaded model (None initially)
             - _model_load_time: Timestamp when model was loaded
             - _is_loading: Flag to prevent concurrent model loading
             - _active_transcriptions: Counter for active operations
             - _start_time: Service startup time for uptime calculation
             - _executor: ThreadPoolExecutor for CPU-intensive operations
+            - _device: Device for inference (cuda or cpu)
+            - _compute_type: Compute type for inference
         
         Resource Management:
             - ThreadPoolExecutor configured with max concurrent transcriptions
             - Model descriptions for user-friendly information
             - Supported language list for validation
+            - Device detection for optimal performance
         
         Thread Safety:
             - Initialization check prevents double initialization
@@ -247,13 +256,19 @@ class WhisperService:
         self._start_time = time.time()
         self._executor = ThreadPoolExecutor(max_workers=settings.max_concurrent_transcriptions)
         
+        # Detect device and compute type
+        self._device = self._detect_device()
+        self._compute_type = self._get_compute_type()
+        
         # Model descriptions
         self._model_descriptions = {
             "tiny": "Fastest, least accurate (39 MB)",
             "base": "Good balance of speed and accuracy (74 MB)",
             "small": "Better accuracy, slower (244 MB)",
             "medium": "Good accuracy, slower (769 MB)",
-            "large": "Best accuracy, slowest (1550 MB)"
+            "large": "Best accuracy, slowest (1550 MB)",
+            "large-v2": "Best accuracy, slowest (1550 MB)",
+            "large-v3": "Best accuracy, slowest (1550 MB)"
         }
         
         # Supported languages (Whisper supports 99 languages)
@@ -270,11 +285,33 @@ class WhisperService:
             "mg", "as", "tt", "haw", "ln", "ha", "ba", "jw", "su"
         ]
         
-        logger.info("WhisperService initialized")
+        logger.info(f"WhisperService initialized with device: {self._device}, compute_type: {self._compute_type}")
+    
+    def _detect_device(self) -> str:
+        """Detect available device (cuda or cpu)."""
+        # Try to detect CUDA via ctranslate2 (used by faster-whisper)
+        try:
+            import ctranslate2
+            # Check if CUDA is available via ctranslate2
+            # ctranslate2.get_supported_compute_types("cuda") will return empty if CUDA not available
+            if ctranslate2.get_supported_compute_types("cuda"):
+                return "cuda"
+        except (ImportError, Exception):
+            pass
+        
+        # Default to CPU
+        return "cpu"
+    
+    def _get_compute_type(self) -> str:
+        """Get optimal compute type based on device."""
+        if self._device == "cuda":
+            return "float16"  # Use FP16 on GPU for better performance
+        else:
+            return "int8"  # Use INT8 on CPU for better performance
     
     async def load_model(self, model_size: str = None) -> dict:
         """
-        Load a Whisper model.
+        Load a Faster Whisper model.
         
         Args:
             model_size: Model size to load (defaults to configured size)
@@ -306,7 +343,7 @@ class WhisperService:
         start_time = time.time()
         
         try:
-            logger.info(f"Loading Whisper model: {model_size}")
+            logger.info(f"Loading Faster Whisper model: {model_size} on {self._device} with {self._compute_type}")
             
             # Load model in thread pool to avoid blocking
             loop = asyncio.get_event_loop()
@@ -344,12 +381,14 @@ class WhisperService:
     def _load_model_sync(self, model_size: str):
         """Synchronous model loading (runs in thread pool)."""
         try:
-            # Check if CUDA is available
-            device = "cuda" if torch.cuda.is_available() else "cpu"
-            logger.info(f"Loading model on device: {device}")
+            logger.info(f"Loading model on device: {self._device}, compute_type: {self._compute_type}")
             
-            # Load the model
-            model = whisper.load_model(model_size, device=device)
+            # Load the Faster Whisper model
+            model = WhisperModel(
+                model_size,
+                device=self._device,
+                compute_type=self._compute_type
+            )
             
             # Log memory usage
             memory_usage = get_memory_usage()
@@ -370,7 +409,7 @@ class WhisperService:
         task: str = "transcribe"
     ) -> TranscriptionResponse:
         """
-        Transcribe audio file using Whisper.
+        Transcribe audio file using Faster Whisper.
         
         Args:
             file_path: Path to audio file
@@ -462,6 +501,7 @@ class WhisperService:
         try:
             # Prepare transcription options
             options = {
+                "beam_size": 5,  # Default beam size for better accuracy
                 "temperature": temperature,
                 "task": task
             }
@@ -470,7 +510,27 @@ class WhisperService:
                 options["language"] = language
             
             # Run transcription
-            result = self._model.transcribe(file_path, **options)
+            segments, info = self._model.transcribe(file_path, **options)
+            
+            # Convert generator to list and format result
+            segments_list = list(segments)
+            
+            # Build result dictionary compatible with existing response format
+            result = {
+                "text": " ".join([seg.text for seg in segments_list]),
+                "language": info.language,
+                "language_probability": info.language_probability,
+                "segments": [
+                    {
+                        "start": seg.start,
+                        "end": seg.end,
+                        "text": seg.text.strip(),
+                        "avg_logprob": getattr(seg, "avg_logprob", None),
+                        "no_speech_prob": getattr(seg, "no_speech_prob", None)
+                    }
+                    for seg in segments_list
+                ]
+            }
             
             return result
         
@@ -484,7 +544,7 @@ class WhisperService:
         file_info: Dict[str, Any],
         processing_time: float
     ) -> TranscriptionResponse:
-        """Create TranscriptionResponse from Whisper result."""
+        """Create TranscriptionResponse from Faster Whisper result."""
         
         # Extract segments
         segments = []
@@ -493,20 +553,23 @@ class WhisperService:
                 start_time=segment.get("start", 0.0),
                 end_time=segment.get("end", 0.0),
                 text=segment.get("text", "").strip(),
-                confidence=None  # Whisper doesn't provide confidence scores
+                confidence=None  # Faster Whisper doesn't provide direct confidence scores
             ))
         
         # Calculate overall confidence (if available)
         confidence_score = None
         if "segments" in whisper_result and whisper_result["segments"]:
-            # Use average of segment-level confidence if available
+            # Use average of segment-level log probabilities if available
             confidences = [
                 seg.get("avg_logprob", 0) for seg in whisper_result["segments"]
-                if "avg_logprob" in seg
+                if seg.get("avg_logprob") is not None
             ]
             if confidences:
-                # Convert log probability to confidence score
-                confidence_score = max(0, min(1, sum(confidences) / len(confidences) + 1))
+                # Convert log probability to confidence score (approximate)
+                # avg_logprob is typically negative, so we normalize it
+                avg_logprob = sum(confidences) / len(confidences)
+                # Convert to a 0-1 scale (rough approximation)
+                confidence_score = max(0, min(1, (avg_logprob + 1) / 2))
         
         return TranscriptionResponse(
             text=whisper_result.get("text", "").strip(),
