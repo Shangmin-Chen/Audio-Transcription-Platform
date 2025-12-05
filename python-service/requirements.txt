@@ -8,3 +8,6 @@ python-dotenv
 httpx
 librosa
 soundfile
+audioread
+pytest
+pytest-asyncio

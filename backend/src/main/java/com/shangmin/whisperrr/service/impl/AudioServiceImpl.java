@@ -1,9 +1,14 @@
 package com.shangmin.whisperrr.service.impl;
 
-import com.shangmin.whisperrr.dto.*;
+import com.shangmin.whisperrr.dto.JobProgressResponse;
+import com.shangmin.whisperrr.dto.JobSubmissionResponse;
+import com.shangmin.whisperrr.dto.TranscriptionResultResponse;
+import com.shangmin.whisperrr.dto.TranscriptionStatus;
 import com.shangmin.whisperrr.exception.FileValidationException;
 import com.shangmin.whisperrr.exception.TranscriptionProcessingException;
+import com.shangmin.whisperrr.config.AppConfig;
 import com.shangmin.whisperrr.service.AudioService;
+import com.shangmin.whisperrr.util.SecurityUtils;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import org.springframework.beans.factory.annotation.Value;
@@ -19,56 +24,23 @@ import org.springframework.web.client.HttpServerErrorException;
 import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestTemplate;
 import org.springframework.web.multipart.MultipartFile;
+import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.LocalDateTime;
-import java.util.*;
+import java.time.format.DateTimeFormatter;
+import java.util.Map;
 
 /**
- * Simplified implementation of AudioService for direct audio transcription.
+ * Service implementation for audio transcription operations.
  * 
- * <p>This implementation provides instant transcription by communicating directly
- * with the Python transcription service without any persistence layer. It validates
- * uploaded audio files and forwards them to the Python service for processing,
- * returning results immediately.</p>
- * 
- * <h3>Key Features:</h3>
- * <ul>
- *   <li><strong>Direct Processing:</strong> No job queuing or status tracking</li>
- *   <li><strong>Instant Results:</strong> Synchronous transcription with immediate response</li>
- *   <li><strong>Stateless Operation:</strong> No persistent storage or job management</li>
- *   <li><strong>Simplified Architecture:</strong> Direct proxy to Python transcription service</li>
- * </ul>
- * 
- * <h3>Processing Flow:</h3>
- * <ol>
- *   <li>Validate uploaded audio file (format, size, content type)</li>
- *   <li>Forward file to Python transcription service via HTTP</li>
- *   <li>Receive transcription results from Python service</li>
- *   <li>Return formatted results to client immediately</li>
- * </ol>
- * 
- * <h3>Error Handling:</h3>
- * <ul>
- *   <li><strong>Validation Errors:</strong> Immediate feedback for invalid files</li>
- *   <li><strong>Service Errors:</strong> Proper error mapping from Python service</li>
- *   <li><strong>Network Errors:</strong> Timeout and connectivity error handling</li>
- *   <li><strong>Processing Errors:</strong> Transcription failure error reporting</li>
- * </ul>
- * 
- * <h3>Performance Benefits:</h3>
- * <ul>
- *   <li>No database overhead or connection management</li>
- *   <li>No job queuing or polling mechanisms</li>
- *   <li>Direct HTTP communication with minimal latency</li>
- *   <li>Simplified error handling and debugging</li>
- * </ul>
+ * <p>This service handles communication with the Python transcription service,
+ * validates audio files, and transforms responses for the frontend. It acts as
+ * a proxy layer between the frontend and Python service, providing validation,
+ * error handling, and response transformation.</p>
  * 
  * @author shangmin
- * @version 2.0
+ * @version 1.0
  * @since 2024
- * 
- * @see com.shangmin.whisperrr.service.AudioService
- * @see com.shangmin.whisperrr.controller.AudioController
  */
 @Service
 public class AudioServiceImpl implements AudioService {
@@ -80,55 +52,51 @@ public class AudioServiceImpl implements AudioService {
     @Value("${whisperrr.service.url}")
     private String pythonServiceUrl;
     
-    @Value("${whisperrr.service.timeout:300000}")
-    private int serviceTimeout;
-    
-    // Supported file types and size limit
-    private static final Set<String> SUPPORTED_EXTENSIONS = Set.of("mp3", "wav", "m4a", "flac", "ogg", "wma");
-    private static final long MAX_FILE_SIZE = 25 * 1024 * 1024; // 25MB
+    @Value("${whisperrr.service.connect-timeout:5000}")
+    private int connectTimeout;
     
     /**
-     * Initialize the REST template for Python service communication
-     * with configured timeout settings after dependency injection.
+     * Initialize RestTemplate with connection timeout configuration.
      */
     @PostConstruct
     public void initRestTemplate() {
         SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(5000); // 5 seconds connection timeout
-        factory.setReadTimeout(serviceTimeout); // Use configured timeout for read operations
+        factory.setConnectTimeout(connectTimeout);
         this.restTemplate = new RestTemplate(factory);
     }
     
     @Override
-    public TranscriptionResultResponse transcribeAudio(MultipartFile audioFile) {
-        logger.info("Processing direct transcription for file: {}", audioFile.getOriginalFilename());
-        
-        // Validate the file
+    public TranscriptionResultResponse transcribeAudio(MultipartFile audioFile, String modelSize) {
         validateAudioFile(audioFile);
         
         try {
-            // Prepare multipart request for Python service
             HttpHeaders headers = new HttpHeaders();
             headers.setContentType(MediaType.MULTIPART_FORM_DATA);
             
-            // Create multipart body
             MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
             
-            // Convert MultipartFile to ByteArrayResource for RestTemplate
-            ByteArrayResource fileResource = new ByteArrayResource(audioFile.getBytes()) {
+            String filename = SecurityUtils.sanitizeFilename(audioFile.getOriginalFilename());
+            if (filename == null) {
+                filename = "audio_file." + SecurityUtils.getFileExtension(audioFile.getOriginalFilename());
+            }
+            
+            final String safeFilename = filename;
+            final byte[] fileBytes = audioFile.getBytes();
+            
+            body.add("file", new ByteArrayResource(fileBytes) {
                 @Override
                 public String getFilename() {
-                    return audioFile.getOriginalFilename();
+                    return safeFilename;
                 }
-            };
-            
-            body.add("file", fileResource);
+            });
             
             HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
             
-            // Call Python transcription service
-            String transcribeUrl = pythonServiceUrl + "/transcribe";
-            logger.info("Sending transcription request to: {}", transcribeUrl);
+            UriComponentsBuilder urlBuilder = UriComponentsBuilder.fromHttpUrl(pythonServiceUrl + "/transcribe");
+            if (modelSize != null && !modelSize.trim().isEmpty()) {
+                urlBuilder.queryParam("model_size", modelSize);
+            }
+            String transcribeUrl = urlBuilder.toUriString();
             
             ResponseEntity<Map> response = restTemplate.postForEntity(
                 transcribeUrl, 
@@ -139,32 +107,18 @@ public class AudioServiceImpl implements AudioService {
             if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
                 Map<String, Object> result = response.getBody();
                 
-                // Extract transcription data from Python service response with null safety
-                String transcriptionText = result.get("text") != null ? (String) result.get("text") : "";
-                String language = result.get("language") != null ? (String) result.get("language") : "unknown";
-                Double confidence = result.get("confidence_score") != null ? 
-                    ((Number) result.get("confidence_score")).doubleValue() : null;
-                Double duration = result.get("duration") != null ? 
-                    ((Number) result.get("duration")).doubleValue() : null;
-                String modelUsed = result.get("model_used") != null ? (String) result.get("model_used") : "unknown";
-                Double processingTime = result.get("processing_time") != null ? 
-                    ((Number) result.get("processing_time")).doubleValue() : null;
-                
-                // Validate that we have at least transcription text
-                if (transcriptionText == null || transcriptionText.isEmpty()) {
+                String transcriptionText = extractTranscriptionText(result);
+                if (transcriptionText.isEmpty()) {
                     throw new TranscriptionProcessingException("Python service returned empty transcription result");
                 }
                 
-                logger.info("Transcription completed successfully for file: {}", audioFile.getOriginalFilename());
-                
-                // Create and return result response
                 TranscriptionResultResponse resultResponse = new TranscriptionResultResponse();
                 resultResponse.setTranscriptionText(transcriptionText);
-                resultResponse.setLanguage(language);
-                resultResponse.setConfidence(confidence);
-                resultResponse.setDuration(duration);
-                resultResponse.setModelUsed(modelUsed);
-                resultResponse.setProcessingTime(processingTime);
+                resultResponse.setLanguage(String.valueOf(result.getOrDefault("language", "unknown")));
+                resultResponse.setConfidence(extractDoubleSafely(result.get("confidence_score")));
+                resultResponse.setDuration(extractDoubleSafely(result.get("duration")));
+                resultResponse.setModelUsed(String.valueOf(result.getOrDefault("model_used", "unknown")));
+                resultResponse.setProcessingTime(extractDoubleSafely(result.get("processing_time")));
                 resultResponse.setCompletedAt(LocalDateTime.now());
                 resultResponse.setStatus(TranscriptionStatus.COMPLETED);
                 
@@ -175,20 +129,18 @@ public class AudioServiceImpl implements AudioService {
             }
             
         } catch (ResourceAccessException e) {
-            logger.error("Failed to connect to Python transcription service: {}", e.getMessage(), e);
-            throw new TranscriptionProcessingException("Transcription service is unavailable: " + e.getMessage(), e);
-        } catch (HttpClientErrorException e) {
-            logger.error("Python service returned client error ({}): {}", e.getStatusCode(), e.getMessage(), e);
-            throw new TranscriptionProcessingException("Transcription service client error: " + e.getMessage(), e);
-        } catch (HttpServerErrorException e) {
-            logger.error("Python service returned server error ({}): {}", e.getStatusCode(), e.getMessage(), e);
-            throw new TranscriptionProcessingException("Transcription service server error: " + e.getMessage(), e);
+            logger.error("Failed to connect to Python service: {}", e.getMessage(), e);
+            throw new TranscriptionProcessingException("Transcription service is unavailable", e);
+        } catch (HttpClientErrorException | HttpServerErrorException e) {
+            String responseBody = e.getResponseBodyAsString();
+            logger.error("Python service error ({}): {}. Response: {}", 
+                e.getStatusCode(), e.getMessage(), responseBody, e);
+            throw new TranscriptionProcessingException("Transcription service error: " + e.getStatusCode(), e);
         } catch (TranscriptionProcessingException e) {
-            // Re-throw processing exceptions as-is
             throw e;
         } catch (Exception e) {
-            logger.error("Transcription failed for file: {}", audioFile.getOriginalFilename(), e);
-            throw new TranscriptionProcessingException("Transcription processing failed: " + e.getMessage(), e);
+            logger.error("Transcription failed: {}", e.getMessage(), e);
+            throw new TranscriptionProcessingException("Transcription failed: " + e.getMessage(), e);
         }
     }
     
@@ -198,39 +150,249 @@ public class AudioServiceImpl implements AudioService {
             throw new FileValidationException("Audio file is required");
         }
         
-        // Check file size
-        if (audioFile.getSize() > MAX_FILE_SIZE) {
-            throw new FileValidationException("File size exceeds maximum allowed size of 25MB");
+        if (audioFile.getSize() > AppConfig.MAX_FILE_SIZE_BYTES) {
+            throw new FileValidationException("File size exceeds maximum allowed size of " + AppConfig.MAX_FILE_SIZE_MB + "MB");
         }
         
-        // Check file extension
         String originalFilename = audioFile.getOriginalFilename();
         if (originalFilename == null) {
             throw new FileValidationException("File must have a valid name");
         }
         
         String extension = getFileExtension(originalFilename).toLowerCase();
-        if (!SUPPORTED_EXTENSIONS.contains(extension)) {
-            throw new FileValidationException("Unsupported file type. Supported types: " + SUPPORTED_EXTENSIONS);
+        if (!AppConfig.SUPPORTED_EXTENSIONS.contains(extension)) {
+            throw new FileValidationException("Unsupported file type. Supported types: " + AppConfig.SUPPORTED_EXTENSIONS);
         }
         
-        // Check content type
         String contentType = audioFile.getContentType();
-        if (contentType == null || !contentType.startsWith("audio/")) {
-            throw new FileValidationException("File must be an audio file");
+        if (contentType == null || (!contentType.startsWith("audio/") && !contentType.startsWith("video/"))) {
+            throw new FileValidationException("File must be an audio or video file");
         }
+    }
+    
+    /**
+     * Extract transcription text from Python service response.
+     * 
+     * @param result the response map from Python service
+     * @return extracted transcription text, or empty string if not found
+     */
+    private String extractTranscriptionText(Map<String, Object> result) {
+        Object textObj = result.get("text");
+        String text = textObj != null ? String.valueOf(textObj).trim() : "";
         
-        logger.debug("File validation passed for: {}", originalFilename);
+        if (text.isEmpty()) {
+            Object segmentsObj = result.get("segments");
+            if (segmentsObj instanceof java.util.List) {
+                @SuppressWarnings("unchecked")
+                java.util.List<Map<String, Object>> segments = (java.util.List<Map<String, Object>>) segmentsObj;
+                if (segments != null && !segments.isEmpty()) {
+                    StringBuilder textBuilder = new StringBuilder();
+                    for (Map<String, Object> segment : segments) {
+                        String segText = segment.get("text") != null ? String.valueOf(segment.get("text")).trim() : "";
+                        if (!segText.isEmpty()) {
+                            if (textBuilder.length() > 0) textBuilder.append(" ");
+                            textBuilder.append(segText);
+                        }
+                    }
+                    text = textBuilder.toString();
+                }
+            }
+        }
+        return text;
+    }
+    
+    /**
+     * Safely extract a double value from a response object.
+     * 
+     * @param value the value to extract
+     * @return double value, or null if extraction fails
+     */
+    private Double extractDoubleSafely(Object value) {
+        if (value == null) return null;
+        try {
+            return value instanceof Number ? ((Number) value).doubleValue() : null;
+        } catch (ClassCastException e) {
+            logger.warn("Failed to extract double value from: {}", value, e);
+            return null;
+        }
     }
     
     /**
      * Extract file extension from filename.
      * 
-     * @param filename the filename to extract extension from
-     * @return the file extension without the dot, or empty string if no extension
+     * @param filename the filename
+     * @return file extension in lowercase, or empty string if no extension
      */
     private String getFileExtension(String filename) {
         int lastDotIndex = filename.lastIndexOf('.');
         return lastDotIndex == -1 ? "" : filename.substring(lastDotIndex + 1);
+    }
+    
+    @Override
+    public JobSubmissionResponse submitTranscriptionJob(MultipartFile audioFile, String modelSize) {
+        validateAudioFile(audioFile);
+        
+        try {
+            HttpHeaders headers = new HttpHeaders();
+            headers.setContentType(MediaType.MULTIPART_FORM_DATA);
+            
+            MultiValueMap<String, Object> body = new LinkedMultiValueMap<>();
+            
+            String filename = SecurityUtils.sanitizeFilename(audioFile.getOriginalFilename());
+            if (filename == null) {
+                filename = "audio_file." + SecurityUtils.getFileExtension(audioFile.getOriginalFilename());
+            }
+            
+            final String safeFilename = filename;
+            final byte[] fileBytes = audioFile.getBytes();
+            
+            body.add("file", new ByteArrayResource(fileBytes) {
+                @Override
+                public String getFilename() {
+                    return safeFilename;
+                }
+            });
+            
+            HttpEntity<MultiValueMap<String, Object>> requestEntity = new HttpEntity<>(body, headers);
+            
+            UriComponentsBuilder urlBuilder = UriComponentsBuilder.fromHttpUrl(pythonServiceUrl + "/jobs/submit");
+            if (modelSize != null && !modelSize.trim().isEmpty()) {
+                urlBuilder.queryParam("model_size", modelSize);
+            }
+            String submitUrl = urlBuilder.toUriString();
+            
+            ResponseEntity<Map> response = restTemplate.postForEntity(
+                submitUrl, 
+                requestEntity, 
+                Map.class
+            );
+            
+            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
+                Map<String, Object> result = response.getBody();
+                
+                JobSubmissionResponse submissionResponse = new JobSubmissionResponse();
+                submissionResponse.setJobId(String.valueOf(result.get("job_id")));
+                submissionResponse.setStatus(String.valueOf(result.get("status")));
+                submissionResponse.setMessage(String.valueOf(result.getOrDefault("message", "Job submitted")));
+                
+                return submissionResponse;
+            } else {
+                throw new TranscriptionProcessingException("Python service returned unexpected response: " + 
+                    (response.getStatusCode() != null ? response.getStatusCode() : "null status"));
+            }
+            
+        } catch (ResourceAccessException e) {
+            logger.error("Failed to connect to Python service: {}", e.getMessage(), e);
+            throw new TranscriptionProcessingException("Transcription service is unavailable", e);
+        } catch (HttpClientErrorException | HttpServerErrorException e) {
+            String responseBody = e.getResponseBodyAsString();
+            logger.error("Python service error ({}): {}. Response: {}", 
+                e.getStatusCode(), e.getMessage(), responseBody, e);
+            throw new TranscriptionProcessingException("Transcription service error: " + e.getStatusCode(), e);
+        } catch (TranscriptionProcessingException e) {
+            throw e;
+        } catch (Exception e) {
+            logger.error("Job submission failed: {}", e.getMessage(), e);
+            throw new TranscriptionProcessingException("Job submission failed: " + e.getMessage(), e);
+        }
+    }
+    
+    @Override
+    public JobProgressResponse getJobProgress(String jobId) {
+        try {
+            String progressUrl = pythonServiceUrl + "/jobs/" + jobId + "/progress";
+            
+            ResponseEntity<Map> response = restTemplate.getForEntity(progressUrl, Map.class);
+            
+            if (response.getStatusCode() == HttpStatus.OK && response.getBody() != null) {
+                Map<String, Object> result = response.getBody();
+                
+                JobProgressResponse progressResponse = new JobProgressResponse();
+                progressResponse.setJobId(String.valueOf(result.get("job_id")));
+                progressResponse.setStatus(String.valueOf(result.get("status")));
+                
+                Object progressObj = result.get("progress");
+                if (progressObj != null) {
+                    progressResponse.setProgress(progressObj instanceof Number ? 
+                        ((Number) progressObj).doubleValue() : Double.parseDouble(String.valueOf(progressObj)));
+                }
+                
+                progressResponse.setMessage(String.valueOf(result.getOrDefault("message", "")));
+                
+                // If job is completed, include result
+                Object resultObj = result.get("result");
+                if (resultObj != null && resultObj instanceof Map) {
+                    @SuppressWarnings("unchecked")
+                    Map<String, Object> resultMap = (Map<String, Object>) resultObj;
+                    
+                    TranscriptionResultResponse transcriptionResult = new TranscriptionResultResponse();
+                    transcriptionResult.setTranscriptionText(extractTranscriptionText(resultMap));
+                    transcriptionResult.setLanguage(String.valueOf(resultMap.getOrDefault("language", "unknown")));
+                    transcriptionResult.setConfidence(extractDoubleSafely(resultMap.get("confidence_score")));
+                    transcriptionResult.setDuration(extractDoubleSafely(resultMap.get("duration")));
+                    transcriptionResult.setModelUsed(String.valueOf(resultMap.getOrDefault("model_used", "unknown")));
+                    transcriptionResult.setProcessingTime(extractDoubleSafely(resultMap.get("processing_time")));
+                    transcriptionResult.setCompletedAt(LocalDateTime.now());
+                    transcriptionResult.setStatus(TranscriptionStatus.COMPLETED);
+                    
+                    progressResponse.setResult(transcriptionResult);
+                }
+                
+                // Handle error if present
+                Object errorObj = result.get("error");
+                if (errorObj != null) {
+                    progressResponse.setError(String.valueOf(errorObj));
+                }
+                
+                // Map timestamps
+                Object createdAtObj = result.get("created_at");
+                if (createdAtObj != null) {
+                    try {
+                        String createdAtStr = String.valueOf(createdAtObj);
+                        // Handle ISO format with optional timezone
+                        if (createdAtStr.contains("T")) {
+                            createdAtStr = createdAtStr.split("\\+")[0].split("Z")[0];
+                        }
+                        progressResponse.setCreatedAt(LocalDateTime.parse(createdAtStr, DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+                    } catch (Exception e) {
+                        logger.warn("Failed to parse created_at: {}", createdAtObj);
+                    }
+                }
+                
+                Object updatedAtObj = result.get("updated_at");
+                if (updatedAtObj != null) {
+                    try {
+                        String updatedAtStr = String.valueOf(updatedAtObj);
+                        // Handle ISO format with optional timezone
+                        if (updatedAtStr.contains("T")) {
+                            updatedAtStr = updatedAtStr.split("\\+")[0].split("Z")[0];
+                        }
+                        progressResponse.setUpdatedAt(LocalDateTime.parse(updatedAtStr, DateTimeFormatter.ISO_LOCAL_DATE_TIME));
+                    } catch (Exception e) {
+                        logger.warn("Failed to parse updated_at: {}", updatedAtObj);
+                    }
+                }
+                
+                return progressResponse;
+            } else {
+                throw new TranscriptionProcessingException("Python service returned unexpected response: " + 
+                    (response.getStatusCode() != null ? response.getStatusCode() : "null status"));
+            }
+            
+        } catch (HttpClientErrorException e) {
+            if (e.getStatusCode() == HttpStatus.NOT_FOUND) {
+                throw new TranscriptionProcessingException("Job not found: " + jobId);
+            }
+            String responseBody = e.getResponseBodyAsString();
+            logger.error("Python service error ({}): {}. Response: {}", 
+                e.getStatusCode(), e.getMessage(), responseBody, e);
+            throw new TranscriptionProcessingException("Transcription service error: " + e.getStatusCode(), e);
+        } catch (ResourceAccessException e) {
+            logger.error("Failed to connect to Python service: {}", e.getMessage(), e);
+            throw new TranscriptionProcessingException("Transcription service is unavailable", e);
+        } catch (Exception e) {
+            logger.error("Failed to get job progress: {}", e.getMessage(), e);
+            throw new TranscriptionProcessingException("Failed to get job progress: " + e.getMessage(), e);
+        }
     }
 }

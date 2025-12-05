@@ -1,134 +1,17 @@
-"""
-Configuration management for the Whisperrr FastAPI service.
-
-This module provides comprehensive configuration management for the Whisperrr
-transcription service using Pydantic settings. It supports environment-based
-configuration with validation, type checking, and default values for all
-service parameters.
-
-Key Features:
-    - Environment variable support with .env file loading
-    - Type validation and conversion using Pydantic
-    - Comprehensive validation rules for all settings
-    - Default values for development and production
-    - Automatic directory creation for file paths
-    - Flexible CORS origin configuration
-    - Performance and resource limit settings
-
-Configuration Categories:
-    - Model Configuration: Whisper model settings and options
-    - API Configuration: FastAPI service settings and metadata
-    - Processing Configuration: Concurrency and timeout settings
-    - Performance Configuration: Monitoring and optimization settings
-    - File Configuration: Upload limits and format support
-
-Environment Variables:
-    All settings can be configured via environment variables:
-    - MODEL_SIZE: Whisper model size (tiny, base, small, medium, large)
-    - MAX_FILE_SIZE_MB: Maximum upload file size in megabytes
-    - UPLOAD_DIR: Directory for temporary file storage
-    - LOG_LEVEL: Logging level (DEBUG, INFO, WARNING, ERROR, CRITICAL)
-    - CORS_ORIGINS: Comma-separated list of allowed origins
-    - MAX_CONCURRENT_TRANSCRIPTIONS: Maximum parallel transcriptions
-
-Production Considerations:
-    - All settings have sensible defaults for development
-    - Production deployments should override via environment variables
-    - Validation ensures configuration consistency
-    - Resource limits prevent system overload
-    - Security settings for CORS and file handling
-
-Validation Features:
-    - Model size validation against supported options
-    - File size limits with reasonable bounds
-    - Directory creation and permission checking
-    - CORS origin parsing and validation
-    - Log level validation
-
-Usage:
-    ```python
-    from .config import settings
-    
-    # Access configuration values
-    model_size = settings.model_size
-    max_file_size = settings.max_file_size_bytes
-    
-    # Configuration is automatically loaded from:
-    # 1. Environment variables
-    # 2. .env file
-    # 3. Default values
-    ```
-
-Author: shangmin
-Version: 1.0
-Since: 2024
-"""
+"""Configuration management for the Whisperrr FastAPI service."""
 
 import os
-from typing import List, Union
+from typing import List, Union, Dict
 from pydantic import validator, field_validator
 from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
-    """
-    Application settings with comprehensive environment variable support.
-    
-    This class defines all configuration parameters for the Whisperrr transcription
-    service using Pydantic's BaseSettings. It provides type validation, default
-    values, and automatic environment variable loading with .env file support.
-    
-    Configuration Philosophy:
-        - Secure defaults for development
-        - Environment-specific overrides for production
-        - Comprehensive validation for all parameters
-        - Clear documentation for each setting
-        - Flexible configuration without code changes
-    
-    Environment Variable Mapping:
-        - Setting names are automatically mapped to environment variables
-        - Case-insensitive matching (MODEL_SIZE or model_size)
-        - .env file support for local development
-        - Docker-friendly environment variable names
-    
-    Validation Strategy:
-        - Type checking for all parameters
-        - Range validation for numeric values
-        - Format validation for strings
-        - Dependency validation between related settings
-        - Automatic resource creation (directories, etc.)
-    
-    Configuration Categories:
-        1. Model Settings: Whisper model configuration
-        2. API Settings: FastAPI service configuration
-        3. Processing Settings: Performance and concurrency
-        4. File Settings: Upload and storage configuration
-        5. Monitoring Settings: Logging and health checks
-    
-    Production Deployment:
-        ```bash
-        # Set via environment variables
-        export MODEL_SIZE=large
-        export MAX_FILE_SIZE_MB=100
-        export LOG_LEVEL=INFO
-        export CORS_ORIGINS="https://myapp.com,https://api.myapp.com"
-        
-        # Or via Docker
-        docker run -e MODEL_SIZE=large -e MAX_FILE_SIZE_MB=100 whisperrr
-        ```
-    
-    Development Setup:
-        ```bash
-        # Create .env file
-        echo "MODEL_SIZE=base" > .env
-        echo "LOG_LEVEL=DEBUG" >> .env
-        echo "MAX_CONCURRENT_TRANSCRIPTIONS=1" >> .env
-        ```
-    """
+    """Application settings with environment variable support."""
     
     # Model configuration
     model_size: str = "base"
-    max_file_size_mb: int = 25
+    max_file_size_mb: int = 1000  # 1GB - production-ready limit
     upload_dir: str = "/tmp/whisperrr_uploads"
     log_level: str = "INFO"
     
@@ -147,21 +30,83 @@ class Settings(BaseSettings):
     enable_metrics: bool = True
     enable_health_checks: bool = True
     
-    # Supported audio formats
-    supported_formats: List[str] = ["mp3", "wav", "m4a", "flac", "ogg", "wma"]
+    # Supported audio formats (including video formats that will be converted)
+    supported_formats: List[str] = [
+        # Audio formats
+        "mp3", "wav", "m4a", "flac", "ogg", "wma", "aac",
+        # Video formats (will be converted to audio)
+        "mp4", "avi", "mov", "mkv", "flv", "webm", "wmv", "m4v", "3gp"
+    ]
+    
+    # Formats that require conversion (video/music formats)
+    formats_requiring_conversion: List[str] = [
+        "mp4", "avi", "mov", "mkv", "flv", "webm", "wmv", "m4v", "3gp", "aac"
+    ]
     
     # Model size options
-    available_model_sizes: List[str] = ["tiny", "base", "small", "medium", "large"]
+    available_model_sizes: List[str] = ["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"]
+    
+    # Transcription configuration
+    beam_size: int = 5  # Beam size for transcription
+    default_task: str = "translate"  # Transcription task type
+    target_sample_rate: int = 16000  # Target sample rate in Hz
+    audio_channels: int = 1  # Mono audio
+    
+    # FFmpeg/FFprobe configuration
+    ffprobe_timeout_seconds: int = 10  # FFprobe timeout
+    ffmpeg_conversion_timeout_seconds: int = 300  # FFmpeg conversion timeout (5 minutes)
+    
+    # Progress calculation
+    preprocessing_progress_max: float = 40.0  # Maximum progress for preprocessing phase
+    transcription_progress_min: float = 40.0  # Minimum progress for transcription phase
+    transcription_progress_max: float = 100.0  # Maximum progress for transcription phase
+    segment_progress_base: float = 10.0  # Base progress for segments
+    segment_progress_multiplier: float = 1.5  # Progress multiplier per segment
+    segment_progress_max: float = 90.0  # Maximum segment progress
+    
+    # Job management
+    job_cleanup_max_age_seconds: int = 3600  # Job cleanup max age: 1 hour
+    
+    # Server configuration (for development)
+    server_host: str = "0.0.0.0"
+    server_port: int = 8000
+    server_reload: bool = True  # Auto-reload for development
+    
+    # Model descriptions
+    model_descriptions: Dict[str, str] = {
+        "tiny": "Fastest, least accurate (39 MB)",
+        "base": "Good balance of speed and accuracy (74 MB)",
+        "small": "Better accuracy, slower (244 MB)",
+        "medium": "Good accuracy, slower (769 MB)",
+        "large": "Best accuracy, slowest (1550 MB)",
+        "large-v2": "Best accuracy, slowest (1550 MB)",
+        "large-v3": "Best accuracy, slowest (1550 MB)"
+    }
+    
+    # Supported languages (Whisper supports 99 languages)
+    supported_languages: List[str] = [
+        "en", "zh", "de", "es", "ru", "ko", "fr", "ja", "pt", "tr",
+        "pl", "ca", "nl", "ar", "sv", "it", "id", "hi", "fi", "vi",
+        "he", "uk", "el", "ms", "cs", "ro", "da", "hu", "ta", "no",
+        "th", "ur", "hr", "bg", "lt", "la", "mi", "ml", "cy", "sk",
+        "te", "fa", "lv", "bn", "sr", "az", "sl", "kn", "et", "mk",
+        "br", "eu", "is", "hy", "ne", "mn", "bs", "kk", "sq", "sw",
+        "gl", "mr", "pa", "si", "km", "sn", "yo", "so", "af", "oc",
+        "ka", "be", "tg", "sd", "gu", "am", "yi", "lo", "uz", "fo",
+        "ht", "ps", "tk", "nn", "mt", "sa", "lb", "my", "bo", "tl",
+        "mg", "as", "tt", "haw", "ln", "ha", "ba", "jw", "su"
+    ]
     
     class Config:
-        env_file = ".env"
+        # Only read from environment variables, not .env file
+        # This makes config.py the single source of truth for defaults
         env_file_encoding = "utf-8"
         case_sensitive = False
     
     @validator("model_size")
     def validate_model_size(cls, v):
         """Validate model size is supported."""
-        valid_sizes = ["tiny", "base", "small", "medium", "large"]
+        valid_sizes = ["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"]
         if v not in valid_sizes:
             raise ValueError(f"Model size must be one of: {valid_sizes}")
         return v
@@ -177,8 +122,8 @@ class Settings(BaseSettings):
     @validator("max_file_size_mb")
     def validate_max_file_size(cls, v):
         """Validate max file size is reasonable."""
-        if v <= 0 or v > 1000:  # Max 1GB
-            raise ValueError("Max file size must be between 1 and 1000 MB")
+        if v <= 0:
+            raise ValueError("Max file size must be greater than 0 MB")
         return v
     
     @validator("upload_dir")
@@ -204,6 +149,11 @@ class Settings(BaseSettings):
     def supported_formats_set(self) -> set:
         """Get supported formats as a set for faster lookup."""
         return set(self.supported_formats)
+    
+    @property
+    def formats_requiring_conversion_set(self) -> set:
+        """Get formats requiring conversion as a set for faster lookup."""
+        return set(self.formats_requiring_conversion)
 
 
 # Global settings instance

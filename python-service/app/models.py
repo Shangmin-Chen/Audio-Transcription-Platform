@@ -1,6 +1,4 @@
-"""
-Pydantic data models for the Whisperrr FastAPI service.
-"""
+"""Pydantic data models for the Whisperrr FastAPI service."""
 
 from datetime import datetime
 from typing import List, Optional, Dict, Any
@@ -29,7 +27,7 @@ class TranscriptionRequest(BaseModel):
     def validate_model_size(cls, v):
         """Validate model size if provided."""
         if v is not None:
-            valid_sizes = ["tiny", "base", "small", "medium", "large"]
+            valid_sizes = ["tiny", "base", "small", "medium", "large", "large-v2", "large-v3"]
             if v not in valid_sizes:
                 raise ValueError(f"Model size must be one of: {valid_sizes}")
         return v
@@ -115,6 +113,35 @@ class ErrorResponse(BaseModel):
         default=None,
         description="Request correlation ID"
     )
-    timestamp: datetime = Field(default_factory=datetime.utcnow)
+    timestamp: str = Field(default_factory=lambda: datetime.utcnow().isoformat())
+
+
+class JobSubmissionResponse(BaseModel):
+    """Response model for job submission."""
+    
+    job_id: str = Field(description="Unique job identifier")
+    status: str = Field(description="Initial job status")
+    message: str = Field(description="Status message")
+
+
+class JobProgressResponse(BaseModel):
+    """Response model for job progress."""
+    
+    job_id: str = Field(description="Job identifier")
+    status: str = Field(description="Current job status")
+    progress: float = Field(description="Progress percentage (0-100)", ge=0.0, le=100.0)
+    message: str = Field(description="Status message")
+    result: Optional[TranscriptionResponse] = Field(
+        default=None,
+        description="Transcription result (available when status is COMPLETED)"
+    )
+    error: Optional[str] = Field(
+        default=None,
+        description="Error message (available when status is FAILED)"
+    )
+    created_at: str = Field(description="Job creation timestamp")
+    updated_at: str = Field(description="Last update timestamp")
+
+
 
 

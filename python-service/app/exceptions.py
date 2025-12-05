@@ -1,6 +1,4 @@
-"""
-Custom exception classes for the Whisperrr FastAPI service.
-"""
+"""Custom exception classes for the Whisperrr FastAPI service."""
 
 from typing import Optional, Dict, Any
 

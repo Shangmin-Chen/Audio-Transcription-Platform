@@ -12,7 +12,7 @@ Whisperrr transforms audio content into accurate, searchable text using state-of
 - **High Accuracy**: Powered by Faster Whisper AI models (tiny to large-v3)
 - **Fast Performance**: Up to 4x faster than OpenAI Whisper with less memory usage
 - **Multi-Language**: Support for 99+ languages with automatic detection
-- **Multiple Formats**: MP3, WAV, M4A, FLAC, OGG, WMA (up to 25MB)
+- **Multiple Formats**: MP3, WAV, M4A, FLAC, OGG, WMA (up to 1GB)
 - **Stateless Architecture**: No database required - simplified deployment
 - **Modern UI**: Responsive React interface with drag-and-drop upload
 - **Production Ready**: Comprehensive error handling and monitoring
@@ -89,21 +89,35 @@ Whisperrr/
 server.port=8080
 whisperrr.service.url=http://localhost:8000
 cors.allowed-origins=http://localhost:3000,http://localhost:3001
-spring.servlet.multipart.max-file-size=25MB
+spring.servlet.multipart.max-file-size=1000MB
 ```
 
-#### Python Service (`python-service/.env`)
+#### Python Service (`python-service/app/config.py`)
+**Single source of truth:** All defaults are defined in `config.py`. Environment variables can override defaults if needed.
+
+Default configuration:
+- Model size: `base` (tiny, base, small, medium, large, large-v2, large-v3)
+- Max file size: `1GB`
+- CORS origins: `http://localhost:8080,http://localhost:3000`
+- Log level: `INFO`
+
+To override defaults, set environment variables:
 ```bash
-MODEL_SIZE=base                    # tiny, base, small, medium, large, large-v2, large-v3
-MAX_FILE_SIZE_MB=25
-CORS_ORIGINS=http://localhost:8080,http://localhost:3000
-LOG_LEVEL=INFO
+export MAX_FILE_SIZE_MB=1000
+export MODEL_SIZE=small
 ```
 
-#### Frontend (`frontend/.env`)
+#### Frontend (`frontend/src/utils/constants.ts`)
+**Single source of truth:** All defaults are defined in `constants.ts`. Environment variables can override defaults if needed.
+
+Default configuration:
+- Max file size: `1GB`
+- API URL: `http://localhost:8080/api` (can be overridden via `REACT_APP_API_URL`)
+
+To override defaults, set environment variables at build time:
 ```bash
-REACT_APP_API_URL=http://localhost:8080/api
-REACT_APP_MAX_FILE_SIZE=25
+export REACT_APP_API_URL=http://localhost:8080/api
+export REACT_APP_MAX_FILE_SIZE=1000
 ```
 
 ## 🌐 API Documentation
@@ -206,7 +220,7 @@ docker compose ps
 - Check available system resources
 
 ### File Upload Failures
-- Verify file size is under 25MB
+- Verify file size is under 1GB
 - Check file format is supported (MP3, WAV, M4A, FLAC, OGG, WMA)
 - Review backend logs for specific errors
 

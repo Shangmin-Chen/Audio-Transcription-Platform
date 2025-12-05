@@ -1,9 +1,20 @@
-// Custom hook for file upload functionality
+/**
+ * Custom hook for file upload functionality with drag-and-drop support.
+ * 
+ * This hook provides file upload state management, validation, and drag-and-drop
+ * functionality using react-dropzone. It handles file validation, error states,
+ * and provides computed values for UI rendering.
+ * 
+ * @author shangmin
+ * @version 1.0
+ * @since 2024
+ */
 
 import { useState, useCallback } from 'react';
-import { useDropzone } from 'react-dropzone';
-import { validateAudioFile, formatFileSize } from '../utils/fileValidation';
-import { ERROR_MESSAGES } from '../utils/constants';
+import type { DragEvent } from 'react';
+import { useDropzone, type FileRejection } from 'react-dropzone';
+import { validateAudioFile, formatFileSize, getFileExtension } from '../utils/fileValidation';
+import { APP_CONFIG, ERROR_MESSAGES, UPLOAD_CONFIG } from '../utils/constants';
 
 export interface FileUploadState {
   file: File | null;
@@ -37,7 +48,7 @@ export interface UseFileUploadReturn extends FileUploadState {
 }
 
 export const useFileUpload = (options: UseFileUploadOptions = {}): UseFileUploadReturn => {
-  const { onFileSelect, onError, maxFiles = 1, disabled = false } = options;
+  const { onFileSelect, onError, maxFiles = UPLOAD_CONFIG.MAX_FILES, disabled = false } = options;
   
   const [state, setState] = useState<FileUploadState>({
     file: null,
@@ -71,13 +82,9 @@ export const useFileUpload = (options: UseFileUploadOptions = {}): UseFileUpload
     // Handle rejected files
     if (rejectedFiles.length > 0) {
       const rejection = rejectedFiles[0];
-      let errorMessage: string = ERROR_MESSAGES.INVALID_FORMAT;
-
-      if (rejection.errors.some((e: any) => e.code === 'file-too-large')) {
-        errorMessage = ERROR_MESSAGES.FILE_TOO_LARGE;
-      } else if (rejection.errors.some((e: any) => e.code === 'file-invalid-type')) {
-        errorMessage = ERROR_MESSAGES.INVALID_FORMAT;
-      }
+      // Use the actual error message from the validator if available
+      const firstError = rejection.errors[0];
+      const errorMessage = firstError?.message || ERROR_MESSAGES.INVALID_FORMAT;
 
       setState(prev => ({
         ...prev,
@@ -105,19 +112,46 @@ export const useFileUpload = (options: UseFileUploadOptions = {}): UseFileUpload
     setState(prev => ({ ...prev, isDragActive: false, isDragReject: false }));
   }, []);
 
-  const onDragOver = useCallback((event: any) => {
+  const onDragOver = useCallback((event: DragEvent<HTMLElement>) => {
     if (disabled) return;
     event.preventDefault();
   }, [disabled]);
 
-  const onDropRejected = useCallback(() => {
+  const onDropRejected = useCallback((fileRejections: FileRejection[]) => {
+    const rejection = fileRejections[0];
+    // Use the actual error message from the validator if available
+    const firstError = rejection.errors[0];
+    const errorMessage = firstError?.message || ERROR_MESSAGES.INVALID_FORMAT;
+
     setState(prev => ({ 
       ...prev, 
       isDragReject: true, 
-      error: ERROR_MESSAGES.INVALID_FORMAT 
+      error: errorMessage 
     }));
-    onError?.(ERROR_MESSAGES.INVALID_FORMAT);
+    onError?.(errorMessage);
   }, [onError]);
+
+  // Validator function to check file extensions and size (more reliable than MIME types)
+  const validator = useCallback((file: File) => {
+    // Check file size first (files exactly at limit should be accepted)
+    if (file.size > APP_CONFIG.maxFileSize) {
+      const maxSizeFormatted = formatFileSize(APP_CONFIG.maxFileSize);
+      return {
+        code: 'file-too-large',
+        message: `File size must be ${maxSizeFormatted} or less (current: ${formatFileSize(file.size)})`
+      };
+    }
+    
+    // Check file extension
+    const extension = getFileExtension(file.name);
+    if (!extension || !APP_CONFIG.supportedExtensions.includes(extension)) {
+      return {
+        code: 'file-invalid-type',
+        message: ERROR_MESSAGES.INVALID_FORMAT
+      };
+    }
+    return null;
+  }, []);
 
   const { getRootProps, getInputProps } = useDropzone({
     onDrop,
@@ -125,18 +159,23 @@ export const useFileUpload = (options: UseFileUploadOptions = {}): UseFileUpload
     onDragLeave,
     onDragOver,
     onDropRejected,
+    // Use permissive accept with standard MIME types, validator handles extension filtering
     accept: {
-      'audio/*': ['.mp3', '.wav', '.m4a', '.flac', '.ogg', '.wma'],
-      // Also accept by extension directly
-      '.mp3': ['audio/mpeg', 'audio/mp3'],
-      '.wav': ['audio/wav', 'audio/wave', 'audio/x-wav'],
-      '.m4a': ['audio/mp4', 'audio/m4a', 'audio/x-m4a'],
-      '.flac': ['audio/flac', 'audio/x-flac'],
-      '.ogg': ['audio/ogg', 'audio/vorbis'],
-      '.wma': ['audio/x-ms-wma', 'audio/wma']
+      'audio/mpeg': ['.mp3'],
+      'audio/wav': ['.wav'],
+      'audio/mp4': ['.m4a'],
+      'audio/flac': ['.flac'],
+      'audio/ogg': ['.ogg'],
+      'audio/x-ms-wma': ['.wma'],
+      'audio/aac': ['.aac'],
+      'video/mp4': ['.mp4'],
+      'video/x-msvideo': ['.avi'],
+      'video/quicktime': ['.mov'],
+      'video/webm': ['.webm']
     },
+    validator,
     maxFiles,
-    maxSize: 25 * 1024 * 1024, // 25MB
+    // Don't use maxSize here - let validator handle it to allow files exactly at limit
     disabled,
     noClick: disabled,
     noKeyboard: disabled,

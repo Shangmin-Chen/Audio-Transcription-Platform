@@ -1,5 +1,4 @@
 services:
-  # Python Transcription Service
   python-service:
     build:
       context: ./python-service
@@ -7,7 +6,7 @@ services:
     container_name: whisperrr-python
     environment:
       - MODEL_SIZE=base
-      - MAX_FILE_SIZE_MB=25
+      - MAX_FILE_SIZE_MB=1000
       - CORS_ORIGINS=http://localhost:8080,http://localhost:3000
       - LOG_LEVEL=INFO
     ports:
@@ -16,8 +15,15 @@ services:
       - ./python-service/app:/app/app
     networks:
       - whisperrr-network
+    deploy:
+      resources:
+        limits:
+          cpus: '2.0'
+          memory: 4G
+        reservations:
+          cpus: '0.5'
+          memory: 1G
 
-  # Spring Boot Backend
   backend:
     build:
       context: ./backend
@@ -34,8 +40,15 @@ services:
       - whisperrr-network
     depends_on:
       - python-service
+    deploy:
+      resources:
+        limits:
+          cpus: '1.0'
+          memory: 1G
+        reservations:
+          cpus: '0.25'
+          memory: 256M
 
-  # React Frontend
   frontend:
     build:
       context: ./frontend

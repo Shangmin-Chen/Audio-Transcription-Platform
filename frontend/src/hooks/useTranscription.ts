@@ -1,154 +1,171 @@
 /**
- * Simplified React hook for direct audio transcription.
+ * Custom hook for managing audio transcription workflow.
  * 
- * This hook provides a streamlined interface for instant audio transcription
- * without job queuing or polling. It handles file uploads and returns
- * transcription results immediately, simplifying the user experience.
- * 
- * Key Features:
- *   - Direct transcription without job management
- *   - Instant results without polling
- *   - Simplified state management
- *   - Type-safe error handling
- *   - Integration with React Query for caching
- * 
- * Workflow:
- *   1. Idle: Ready to accept file upload
- *   2. Processing: File being transcribed
- *   3. Completed: Transcription results available
- *   4. Failed: Error occurred during transcription
- * 
- * Benefits:
- *   - No complex job state management
- *   - Immediate feedback to users
- *   - Reduced API complexity
- *   - Simplified error handling
+ * This hook handles the complete transcription process including:
+ * - Job submission for asynchronous processing
+ * - Progress polling with automatic retry logic
+ * - State management for transcription results, errors, and progress
+ * - Cleanup and reset functionality
  * 
  * @author shangmin
- * @version 2.0
+ * @version 1.0
  * @since 2024
  */
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useRef, useEffect } from 'react';
 import { useMutation } from '@tanstack/react-query';
 import { TranscriptionService } from '../services/transcription';
 import { 
   TranscriptionResultResponse,
-  TranscriptionStatus 
+  TranscriptionStatus,
+  WhisperModelSize,
+  JobSubmissionResponse,
+  JobProgressResponse
 } from '../types/transcription';
 
-/**
- * Return type interface for the simplified useTranscription hook.
- * 
- * This interface defines the streamlined state and actions provided
- * by the hook for direct transcription operations.
- */
 export interface UseTranscriptionReturn {
-  // State - Current transcription state
-  /** Final transcription result when completed */
   transcriptionResult: TranscriptionResultResponse | null;
-  /** Current error message if transcription failed */
   error: string | null;
-  
-  // Actions - Functions to control transcription
-  /** Upload and transcribe an audio file instantly */
-  transcribeAudio: (file: File) => Promise<void>;
-  /** Clear current error message */
+  progress: number;
+  statusMessage: string | null;
+  transcribeAudio: (file: File, modelSize?: WhisperModelSize) => Promise<void>;
   clearError: () => void;
-  /** Reset to initial state */
   reset: () => void;
-  
-  // Computed - Derived state for UI logic
-  /** Whether transcription is in progress */
   isTranscribing: boolean;
-  /** Whether transcription completed successfully */
   isCompleted: boolean;
-  /** Whether transcription failed */
   isFailed: boolean;
-  /** Whether the hook is in idle state (ready for new transcription) */
   isIdle: boolean;
 }
 
+import { TRANSCRIPTION_CONFIG } from '../utils/constants';
+
 /**
- * Custom hook for direct audio transcription.
+ * Hook for managing transcription workflow with polling support.
  * 
- * This hook encapsulates the logic for instant audio transcription,
- * providing a simple interface for components to upload files and
- * receive transcription results immediately.
- * 
- * State Management:
- *   - Uses React state for transcription results and errors
- *   - Integrates with React Query mutation for API calls
- *   - Provides computed values for UI state
- *   - Simple state transitions: idle → transcribing → completed/failed
- * 
- * API Integration:
- *   - Single mutation for direct transcription
- *   - Proper error handling and user feedback
- *   - Type-safe response handling
- * 
- * Usage Example:
- *   ```tsx
- *   const { transcribeAudio, transcriptionResult, isTranscribing, error } = useTranscription();
- *   
- *   const handleFileUpload = async (file: File) => {
- *     await transcribeAudio(file);
- *   };
- *   ```
- * 
- * @returns UseTranscriptionReturn Simplified transcription interface
+ * @returns transcription state and control functions
  */
 export const useTranscription = (): UseTranscriptionReturn => {
   const [transcriptionResult, setTranscriptionResult] = useState<TranscriptionResultResponse | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [progress, setProgress] = useState<number>(0);
+  const [statusMessage, setStatusMessage] = useState<string | null>(null);
+  const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
+  
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const pollAttemptsRef = useRef<number>(0);
 
-  // Direct transcription mutation
-  const transcriptionMutation = useMutation({
-    mutationFn: (file: File) => TranscriptionService.transcribeAudio(file),
-    onSuccess: (data: TranscriptionResultResponse) => {
-      setTranscriptionResult(data);
-      setError(null);
+  const stopPolling = useCallback(() => {
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
+    pollAttemptsRef.current = 0;
+  }, []);
+
+  const pollJobProgress = useCallback(async (jobId: string) => {
+    try {
+      const progressResponse: JobProgressResponse = await TranscriptionService.getJobProgress(jobId);
+      
+      setProgress(progressResponse.progress);
+      setStatusMessage(progressResponse.message);
+      
+      if (progressResponse.status === 'COMPLETED' && progressResponse.result) {
+        stopPolling();
+        setTranscriptionResult(progressResponse.result);
+        setProgress(100);
+        setStatusMessage('Transcription completed');
+        setIsTranscribing(false);
+        setError(null);
+      } else if (progressResponse.status === 'FAILED') {
+        stopPolling();
+        setError(progressResponse.error || progressResponse.message || 'Transcription failed');
+        setProgress(0);
+        setIsTranscribing(false);
+      } else {
+        // Continue polling
+        pollAttemptsRef.current += 1;
+        if (pollAttemptsRef.current >= TRANSCRIPTION_CONFIG.MAX_POLL_ATTEMPTS) {
+          stopPolling();
+          setError('Transcription timed out. Please try again.');
+          setIsTranscribing(false);
+        }
+      }
+    } catch (err: any) {
+      stopPolling();
+      setError(err.response?.data?.message || err.message || 'Failed to check job progress');
+      setIsTranscribing(false);
+    }
+  }, [stopPolling]);
+
+  const jobSubmissionMutation = useMutation({
+    mutationFn: ({ file, modelSize }: { file: File; modelSize?: WhisperModelSize }) => 
+      TranscriptionService.submitTranscriptionJob(file, modelSize),
+    onSuccess: (data: JobSubmissionResponse) => {
+      setProgress(0);
+      setStatusMessage(data.message || 'Job submitted, starting transcription...');
+      
+      // Set up polling interval
+      const poll = () => {
+        if (data.jobId) {
+          pollJobProgress(data.jobId);
+        }
+      };
+      
+      // Start polling immediately, then continue at interval
+      poll();
+      pollIntervalRef.current = setInterval(poll, TRANSCRIPTION_CONFIG.POLL_INTERVAL_MS);
     },
     onError: (error: any) => {
-      setError(error.response?.data?.message || error.message || 'Transcription failed');
-      setTranscriptionResult(null);
+      setError(error.response?.data?.message || error.message || 'Failed to submit transcription job');
+      setProgress(0);
+      setStatusMessage(null);
+      setIsTranscribing(false);
     },
   });
 
-  // Actions
-  const transcribeAudio = useCallback(async (file: File) => {
+  useEffect(() => {
+    // Cleanup polling on unmount
+    return () => {
+      stopPolling();
+    };
+  }, [stopPolling]);
+
+  const transcribeAudio = useCallback(async (file: File, modelSize?: WhisperModelSize) => {
     setError(null);
     setTranscriptionResult(null);
-    await transcriptionMutation.mutateAsync(file);
-  }, [transcriptionMutation]);
+    setProgress(0);
+    setStatusMessage('Submitting job...');
+    setIsTranscribing(true);
+    stopPolling(); // Stop any existing polling
+    await jobSubmissionMutation.mutateAsync({ file, modelSize });
+  }, [jobSubmissionMutation, stopPolling]);
 
   const clearError = useCallback(() => {
     setError(null);
   }, []);
 
   const reset = useCallback(() => {
+    stopPolling();
     setTranscriptionResult(null);
     setError(null);
-    transcriptionMutation.reset();
-  }, [transcriptionMutation]);
+    setProgress(0);
+    setStatusMessage(null);
+    setIsTranscribing(false);
+    jobSubmissionMutation.reset();
+  }, [jobSubmissionMutation, stopPolling]);
 
-  // Computed values
-  const isTranscribing = transcriptionMutation.isPending;
   const isCompleted = transcriptionResult?.status === TranscriptionStatus.COMPLETED;
-  const isFailed = transcriptionMutation.isError || transcriptionResult?.status === TranscriptionStatus.FAILED;
+  const isFailed = jobSubmissionMutation.isError || (error !== null && !isTranscribing);
   const isIdle = !isTranscribing && !isCompleted && !isFailed;
 
   return {
-    // State
     transcriptionResult,
-    error: error || transcriptionMutation.error?.message,
-    
-    // Actions
+    error: error || jobSubmissionMutation.error?.message,
+    progress,
+    statusMessage,
     transcribeAudio,
     clearError,
     reset,
-    
-    // Computed
     isTranscribing,
     isCompleted,
     isFailed,

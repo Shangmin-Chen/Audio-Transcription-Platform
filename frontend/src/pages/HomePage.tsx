@@ -1,24 +1,19 @@
 /**
- * Home Page Component for direct audio transcription.
+ * Home Page Component for audio transcription workflow.
  * 
- * This component provides the main interface for users to upload audio files
- * and receive instant transcription results. It uses the simplified workflow
- * without job queuing or polling, providing immediate feedback.
+ * This is the main page component that orchestrates the complete transcription
+ * workflow including file upload, model selection, transcription execution,
+ * progress tracking, and results display.
  * 
- * Key Features:
- *   - File upload with drag-and-drop interface
- *   - Instant transcription results display
- *   - Error handling and user feedback
- *   - Responsive design for all devices
- * 
- * Workflow:
- *   1. User selects audio file
- *   2. User clicks transcribe button
- *   3. File is processed instantly
- *   4. Results are displayed immediately
+ * Features:
+ * - File upload with drag-and-drop support
+ * - Model size selection
+ * - Real-time progress tracking
+ * - Transcription results display
+ * - Error handling and user feedback
  * 
  * @author shangmin
- * @version 2.0
+ * @version 1.0
  * @since 2024
  */
 
@@ -26,17 +21,15 @@ import React, { useState } from 'react';
 import { FileUpload } from '../components/upload/FileUpload';
 import { Button } from '../components/common/Button';
 import { ResultsView } from '../components/results/ResultsView';
+import { ProgressBar } from '../components/common/ProgressBar';
+import { ModelSelector } from '../components/common/ModelSelector';
 import { useTranscription } from '../hooks/useTranscription';
+import { WhisperModelSize } from '../types/transcription';
 import { Upload, Mic, Zap, Shield, ArrowLeft } from 'lucide-react';
 
-/**
- * HomePage component that handles the complete transcription workflow.
- * 
- * This component manages the user interface for file upload, transcription
- * processing, and results display in a single, streamlined experience.
- */
 export const HomePage: React.FC = () => {
   const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedModel, setSelectedModel] = useState<WhisperModelSize>('base');
   
   const {
     transcribeAudio,
@@ -44,40 +37,27 @@ export const HomePage: React.FC = () => {
     isTranscribing,
     isCompleted,
     error,
+    progress,
+    statusMessage,
     clearError,
     reset,
   } = useTranscription();
 
-  /**
-   * Handle file selection from the upload component.
-   * 
-   * @param file The selected audio file
-   */
   const handleFileSelect = (file: File) => {
     setSelectedFile(file);
     clearError();
   };
 
-  /**
-   * Handle transcription initiation.
-   * 
-   * Starts the direct transcription process for the selected file.
-   */
   const handleTranscribe = async () => {
     if (!selectedFile) return;
-
     try {
-      await transcribeAudio(selectedFile);
+      await transcribeAudio(selectedFile, selectedModel);
     } catch (error) {
-      console.error('Transcription failed:', error);
+      // Errors are handled by useTranscription hook which updates error state
+      // No additional error handling needed here
     }
   };
 
-  /**
-   * Handle starting over with a new file.
-   * 
-   * Resets the entire workflow to allow for a new transcription.
-   */
   const handleStartOver = () => {
     setSelectedFile(null);
     reset();
@@ -157,7 +137,7 @@ export const HomePage: React.FC = () => {
                 Multiple Formats
               </h3>
               <p className="text-gray-600 dark:text-gray-300">
-                Support for MP3, WAV, M4A, FLAC, OGG, and WMA files up to 25MB
+                Support for MP3, WAV, M4A, FLAC, OGG, and WMA files up to 1GB
               </p>
             </div>
           </div>
@@ -179,6 +159,18 @@ export const HomePage: React.FC = () => {
                   onFileSelect={handleFileSelect}
                   disabled={isTranscribing}
                 />
+
+                {/* Model Selection */}
+                {selectedFile && (
+                  <>
+                    <ModelSelector
+                      selectedModel={selectedModel}
+                      onModelChange={setSelectedModel}
+                      disabled={isTranscribing}
+                    />
+                    
+                  </>
+                )}
 
                 {selectedFile && !isTranscribing && (
                   <div className="space-y-4">
@@ -204,13 +196,12 @@ export const HomePage: React.FC = () => {
                 )}
 
                 {isTranscribing && (
-                  <div className="text-center space-y-4">
-                    <div className="flex justify-center">
-                      <div className="animate-spin rounded-full h-8 w-8 border-b-2 border-blue-600"></div>
-                    </div>
-                    <p className="text-gray-600 dark:text-gray-300">
-                      Transcribing your audio... This may take a moment.
-                    </p>
+                  <div className="space-y-4">
+                    <ProgressBar
+                      progress={progress}
+                      message={statusMessage || 'Processing...'}
+                      showPercentage={true}
+                    />
                   </div>
                 )}
 

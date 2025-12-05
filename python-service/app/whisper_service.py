@@ -1,63 +1,11 @@
-"""
-WhisperService class for managing Faster Whisper models and transcription.
-
-This module provides a comprehensive service layer for managing Faster Whisper model lifecycle
-and performing high-quality audio transcription. It implements a singleton pattern to
-ensure efficient resource management and provides thread-safe operations for concurrent
-transcription requests.
-
-Key Features:
-    - Singleton pattern for efficient resource management
-    - Thread-safe model loading and transcription operations
-    - Asynchronous processing with ThreadPoolExecutor
-    - Comprehensive error handling and recovery
-    - Performance monitoring and metrics collection
-    - Memory management and cleanup
-    - Support for all Whisper model sizes
-    - Multi-language transcription (99+ languages)
-    - Up to 4x faster than openai-whisper with less memory usage
-
-Architecture:
-    The WhisperService acts as the core transcription engine, managing:
-    - Model loading and caching
-    - Audio preprocessing and validation
-    - Transcription execution and result formatting
-    - Resource cleanup and memory management
-    - Performance monitoring and logging
-
-Thread Safety:
-    All public methods are thread-safe and can be called concurrently:
-    - Model loading uses locks to prevent race conditions
-    - Transcription operations are isolated in thread pool
-    - Shared state is protected with appropriate synchronization
-    - Resource cleanup is coordinated across threads
-
-Performance Optimization:
-    - Model caching to avoid repeated loading
-    - Efficient memory management with cleanup
-    - Configurable concurrency limits
-    - Audio preprocessing for optimal quality
-    - Performance metrics collection
-    - Faster inference using CTranslate2
-
-Error Handling:
-    - Custom exception hierarchy for different error types
-    - Graceful degradation for recoverable errors
-    - Comprehensive logging for debugging
-    - Resource cleanup on failures
-    - Retry logic for transient failures
-
-Author: shangmin
-Version: 2.0
-Since: 2024
-"""
+"""WhisperService for managing Faster Whisper models and transcription."""
 
 import asyncio
-import logging
 import time
 import threading
+import logging
 from datetime import datetime
-from typing import Optional, Dict, Any, List
+from typing import Optional, Dict, Any, List, Callable
 from concurrent.futures import ThreadPoolExecutor
 from faster_whisper import WhisperModel
 
@@ -68,6 +16,7 @@ from .models import (
     ModelInfoResponse
 )
 from .exceptions import (
+    WhisperrrException,
     ModelNotLoaded,
     ModelLoadFailed,
     TranscriptionFailed,
@@ -77,129 +26,19 @@ from .utils import (
     preprocess_audio,
     validate_audio_file,
     get_memory_usage,
-    log_performance_metrics,
     cleanup_temp_file
 )
 
-logger = logging.getLogger(__name__)
-
 
 class WhisperService:
-    """
-    Singleton service for managing Faster Whisper models and transcription operations.
-    
-    This class serves as the central coordinator for all Whisper-related operations
-    in the transcription service. It implements a singleton pattern to ensure
-    efficient resource usage and provides thread-safe operations for concurrent
-    transcription requests.
-    
-    Core Responsibilities:
-        - Model Lifecycle Management: Loading, caching, and unloading Faster Whisper models
-        - Transcription Orchestration: Managing the complete transcription pipeline
-        - Resource Management: Efficient memory usage and cleanup
-        - Concurrency Control: Thread-safe operations with proper synchronization
-        - Performance Monitoring: Metrics collection and performance tracking
-        - Error Handling: Comprehensive error management and recovery
-    
-    Singleton Pattern:
-        Uses thread-safe singleton implementation to ensure:
-        - Single model instance per service
-        - Efficient memory usage
-        - Consistent state across requests
-        - Proper resource cleanup
-    
-    Thread Safety:
-        All public methods are designed for concurrent access:
-        - Model loading operations are synchronized
-        - Transcription requests are isolated in thread pool
-        - Shared state is protected with locks
-        - Resource cleanup is coordinated
-    
-    Model Management:
-        Supports all Whisper model sizes:
-        - tiny: 39 MB, fastest processing, basic accuracy
-        - base: 74 MB, balanced speed/accuracy (default)
-        - small: 244 MB, better accuracy, moderate speed
-        - medium: 769 MB, high accuracy, slower processing
-        - large: 1550 MB, highest accuracy, slowest processing
-        - large-v2, large-v3: Latest large model variants
-    
-    Performance Features:
-        - Model caching to avoid repeated loading
-        - Asynchronous processing with ThreadPoolExecutor
-        - Configurable concurrency limits
-        - Memory usage monitoring
-        - Processing time tracking
-        - Automatic resource cleanup
-        - Faster inference with CTranslate2 (up to 4x faster)
-    
-    Language Support:
-        Supports 99+ languages including:
-        - Major languages: English, Spanish, French, German, Chinese, etc.
-        - Regional variants and dialects
-        - Automatic language detection
-        - Language-specific optimization
-    
-    Error Recovery:
-        - Graceful handling of model loading failures
-        - Automatic retry for transient errors
-        - Resource cleanup on failures
-        - Detailed error reporting
-        - Service degradation strategies
-    
-    Usage Example:
-        ```python
-        # Get service instance
-        service = WhisperService()
-        
-        # Load model
-        await service.load_model("base")
-        
-        # Transcribe audio
-        result = await service.transcribe_audio(
-            file_path="audio.mp3",
-            language="en"
-        )
-        
-        print(result.text)
-        ```
-    
-    Attributes:
-        _instance: Singleton instance reference
-        _lock: Thread lock for singleton creation
-        _model: Currently loaded Faster Whisper model
-        _model_size: Size of currently loaded model
-        _model_load_time: Timestamp when model was loaded
-        _is_loading: Flag indicating model loading in progress
-        _active_transcriptions: Count of active transcription operations
-        _start_time: Service startup timestamp
-        _executor: ThreadPoolExecutor for async operations
-        _model_descriptions: Human-readable model descriptions
-        _supported_languages: List of supported language codes
-        _device: Device used for inference (cuda or cpu)
-        _compute_type: Compute type for inference (float16, int8, etc.)
-    """
+    """Singleton service for managing Faster Whisper models and transcription."""
     
     _instance = None
     _lock = threading.Lock()
+    _logger = logging.getLogger(__name__)
     
     def __new__(cls):
-        """
-        Ensure singleton pattern with thread-safe double-checked locking.
-        
-        This method implements the singleton pattern using double-checked locking
-        to ensure thread safety while minimizing synchronization overhead. Only
-        one instance of WhisperService will exist throughout the application
-        lifecycle.
-        
-        Thread Safety:
-            - Uses class-level lock for synchronization
-            - Double-checked locking pattern prevents race conditions
-            - Minimal performance impact after first creation
-        
-        Returns:
-            WhisperService: The singleton instance
-        """
+        """Ensure singleton pattern with thread-safe double-checked locking."""
         if cls._instance is None:
             with cls._lock:
                 if cls._instance is None:
@@ -207,43 +46,7 @@ class WhisperService:
         return cls._instance
     
     def __init__(self):
-        """
-        Initialize the WhisperService singleton instance.
-        
-        This method sets up the service state and resources needed for Faster Whisper
-        model management and transcription operations. It's designed to be called
-        only once due to the singleton pattern.
-        
-        Initialization Process:
-            1. Check if already initialized (singleton safety)
-            2. Initialize core state variables
-            3. Set up ThreadPoolExecutor for async operations
-            4. Configure model descriptions and language support
-            5. Detect device and compute type
-            6. Log successful initialization
-        
-        State Variables:
-            - _model: Currently loaded Faster Whisper model (None initially)
-            - _model_size: Size of loaded model (None initially)
-            - _model_load_time: Timestamp when model was loaded
-            - _is_loading: Flag to prevent concurrent model loading
-            - _active_transcriptions: Counter for active operations
-            - _start_time: Service startup time for uptime calculation
-            - _executor: ThreadPoolExecutor for CPU-intensive operations
-            - _device: Device for inference (cuda or cpu)
-            - _compute_type: Compute type for inference
-        
-        Resource Management:
-            - ThreadPoolExecutor configured with max concurrent transcriptions
-            - Model descriptions for user-friendly information
-            - Supported language list for validation
-            - Device detection for optimal performance
-        
-        Thread Safety:
-            - Initialization check prevents double initialization
-            - All state variables are instance-specific
-            - ThreadPoolExecutor provides thread-safe async execution
-        """
+        """Initialize the WhisperService singleton instance."""
         if hasattr(self, '_initialized'):
             return
         
@@ -260,32 +63,12 @@ class WhisperService:
         self._device = self._detect_device()
         self._compute_type = self._get_compute_type()
         
-        # Model descriptions
-        self._model_descriptions = {
-            "tiny": "Fastest, least accurate (39 MB)",
-            "base": "Good balance of speed and accuracy (74 MB)",
-            "small": "Better accuracy, slower (244 MB)",
-            "medium": "Good accuracy, slower (769 MB)",
-            "large": "Best accuracy, slowest (1550 MB)",
-            "large-v2": "Best accuracy, slowest (1550 MB)",
-            "large-v3": "Best accuracy, slowest (1550 MB)"
-        }
+        # Model descriptions from config
+        self._model_descriptions = settings.model_descriptions
         
-        # Supported languages (Whisper supports 99 languages)
-        self._supported_languages = [
-            "en", "zh", "de", "es", "ru", "ko", "fr", "ja", "pt", "tr",
-            "pl", "ca", "nl", "ar", "sv", "it", "id", "hi", "fi", "vi",
-            "he", "uk", "el", "ms", "cs", "ro", "da", "hu", "ta", "no",
-            "th", "ur", "hr", "bg", "lt", "la", "mi", "ml", "cy", "sk",
-            "te", "fa", "lv", "bn", "sr", "az", "sl", "kn", "et", "mk",
-            "br", "eu", "is", "hy", "ne", "mn", "bs", "kk", "sq", "sw",
-            "gl", "mr", "pa", "si", "km", "sn", "yo", "so", "af", "oc",
-            "ka", "be", "tg", "sd", "gu", "am", "yi", "lo", "uz", "fo",
-            "ht", "ps", "tk", "nn", "mt", "sa", "lb", "my", "bo", "tl",
-            "mg", "as", "tt", "haw", "ln", "ha", "ba", "jw", "su"
-        ]
+        # Supported languages from config
+        self._supported_languages = settings.supported_languages
         
-        logger.info(f"WhisperService initialized with device: {self._device}, compute_type: {self._compute_type}")
     
     def _detect_device(self) -> str:
         """Detect available device (cuda or cpu)."""
@@ -310,15 +93,7 @@ class WhisperService:
             return "int8"  # Use INT8 on CPU for better performance
     
     async def load_model(self, model_size: str = None) -> dict:
-        """
-        Load a Faster Whisper model.
-        
-        Args:
-            model_size: Model size to load (defaults to configured size)
-        
-        Returns:
-            ModelLoadResponse with load information
-        """
+        """Load a Faster Whisper model."""
         if model_size is None:
             model_size = settings.model_size
         
@@ -343,8 +118,6 @@ class WhisperService:
         start_time = time.time()
         
         try:
-            logger.info(f"Loading Faster Whisper model: {model_size} on {self._device} with {self._compute_type}")
-            
             # Load model in thread pool to avoid blocking
             loop = asyncio.get_event_loop()
             self._model = await loop.run_in_executor(
@@ -357,8 +130,6 @@ class WhisperService:
             self._model_load_time = time.time()
             load_time = time.time() - start_time
             
-            logger.info(f"Model {model_size} loaded successfully in {load_time:.2f}s")
-            
             return {
                 "success": True,
                 "model_size": model_size,
@@ -368,7 +139,6 @@ class WhisperService:
             }
         
         except Exception as e:
-            logger.error(f"Failed to load model {model_size}: {e}")
             raise ModelLoadFailed(
                 message=f"Failed to load model {model_size}",
                 model_size=model_size,
@@ -380,25 +150,14 @@ class WhisperService:
     
     def _load_model_sync(self, model_size: str):
         """Synchronous model loading (runs in thread pool)."""
-        try:
-            logger.info(f"Loading model on device: {self._device}, compute_type: {self._compute_type}")
-            
-            # Load the Faster Whisper model
-            model = WhisperModel(
-                model_size,
-                device=self._device,
-                compute_type=self._compute_type
-            )
-            
-            # Log memory usage
-            memory_usage = get_memory_usage()
-            logger.info(f"Model loaded, memory usage: {memory_usage} MB")
-            
-            return model
+        # Load the Faster Whisper model
+        model = WhisperModel(
+            model_size,
+            device=self._device,
+            compute_type=self._compute_type
+        )
         
-        except Exception as e:
-            logger.error(f"Error loading model {model_size}: {e}")
-            raise
+        return model
     
     async def transcribe_audio(
         self,
@@ -406,21 +165,10 @@ class WhisperService:
         model_size: Optional[str] = None,
         language: Optional[str] = None,
         temperature: float = 0.0,
-        task: str = "transcribe"
+        task: str = "transcribe",
+        progress_callback: Optional[Callable[[float, str], None]] = None
     ) -> TranscriptionResponse:
-        """
-        Transcribe audio file using Faster Whisper.
-        
-        Args:
-            file_path: Path to audio file
-            model_size: Model size to use (defaults to loaded model)
-            language: Language hint (ISO 639-1 code)
-            temperature: Temperature for sampling
-            task: Task type ('transcribe' or 'translate')
-        
-        Returns:
-            TranscriptionResponse with transcription results
-        """
+        """Transcribe audio file using Faster Whisper."""
         if self._model is None:
             raise ModelNotLoaded("No model is currently loaded")
         
@@ -432,18 +180,30 @@ class WhisperService:
         self._active_transcriptions += 1
         
         try:
-            logger.info(f"Starting transcription: {file_path}")
-            
             # Validate audio file
+            if progress_callback:
+                progress_callback(0.0, "Validating file format...")
             file_info = validate_audio_file(file_path)
-            logger.debug(f"File validation passed: {file_info}")
+            if file_info is None:
+                raise TranscriptionFailed(
+                    message="File validation returned None",
+                    original_error="validate_audio_file returned None",
+                    file_path=file_path
+                )
             
             # Preprocess audio
             processed_file = None
             try:
-                processed_file = preprocess_audio(file_path)
+                processed_file = preprocess_audio(file_path, progress_callback=progress_callback)
                 
                 # Run transcription in thread pool
+                def transcription_callback(p: float, m: str):
+                    if progress_callback:
+                        # Map transcription progress (0-100%) to overall progress (40-100%)
+                        progress_range = settings.transcription_progress_max - settings.transcription_progress_min
+                        mapped_progress = settings.transcription_progress_min + (p * progress_range / 100.0)
+                        progress_callback(mapped_progress, m)
+                
                 loop = asyncio.get_event_loop()
                 result = await loop.run_in_executor(
                     self._executor,
@@ -451,7 +211,8 @@ class WhisperService:
                     processed_file,
                     language,
                     temperature,
-                    task
+                    task,
+                    transcription_callback
                 )
                 
                 processing_time = time.time() - start_time
@@ -461,17 +222,6 @@ class WhisperService:
                     result, file_info, processing_time
                 )
                 
-                # Log performance metrics
-                log_performance_metrics(
-                    operation="transcription",
-                    duration=processing_time,
-                    file_size=file_info["file_size"],
-                    memory_usage=get_memory_usage(),
-                    model_size=self._model_size,
-                    language=language
-                )
-                
-                logger.info(f"Transcription completed in {processing_time:.2f}s")
                 return response
             
             finally:
@@ -479,8 +229,10 @@ class WhisperService:
                 if processed_file and settings.cleanup_temp_files:
                     cleanup_temp_file(processed_file)
         
+        except WhisperrrException:
+            # Re-raise Whisperrr exceptions as-is so they're handled properly
+            raise
         except Exception as e:
-            logger.error(f"Transcription failed: {e}")
             raise TranscriptionFailed(
                 message="Transcription failed",
                 original_error=str(e),
@@ -495,64 +247,128 @@ class WhisperService:
         file_path: str,
         language: Optional[str],
         temperature: float,
-        task: str
+        task: str,
+        progress_callback: Optional[Callable[[float, str], None]] = None
     ):
         """Synchronous transcription (runs in thread pool)."""
-        try:
-            # Prepare transcription options
-            options = {
-                "beam_size": 5,  # Default beam size for better accuracy
-                "temperature": temperature,
-                "task": task
-            }
-            
-            if language:
-                options["language"] = language
-            
-            # Run transcription
-            segments, info = self._model.transcribe(file_path, **options)
-            
-            # Convert generator to list and format result
-            segments_list = list(segments)
-            
-            # Build result dictionary compatible with existing response format
-            result = {
-                "text": " ".join([seg.text for seg in segments_list]),
-                "language": info.language,
-                "language_probability": info.language_probability,
-                "segments": [
-                    {
-                        "start": seg.start,
-                        "end": seg.end,
-                        "text": seg.text.strip(),
-                        "avg_logprob": getattr(seg, "avg_logprob", None),
-                        "no_speech_prob": getattr(seg, "no_speech_prob", None)
-                    }
-                    for seg in segments_list
-                ]
-            }
-            
-            return result
+        # Prepare transcription options
+        options = {
+            "beam_size": settings.beam_size,
+            "temperature": temperature,
+            "task": settings.default_task
+        }
         
+        if progress_callback:
+            progress_callback(0.0, "Initializing Whisper model...")
+        if progress_callback:
+            progress_callback(5.0, "Starting audio transcription...")
+        
+        segments_generator, info = self._model.transcribe(file_path, **options)
+        segments = list(segments_generator)
+        
+        if info is None:
+            raise TranscriptionFailed(
+                message="Transcription returned None info object",
+                original_error="info is None",
+                file_path=file_path
+            )
+        
+        if progress_callback:
+            progress_callback(10.0, "Processing audio segments...")
+        
+        segments_with_text = []
+        for idx, seg in enumerate(segments):
+            seg_text = getattr(seg, "text", "").strip()
+            segments_with_text.append((seg, seg_text))
+            
+            if progress_callback and idx % 10 == 0:
+                segment_progress = min(
+                    settings.segment_progress_max,
+                    settings.segment_progress_base + (idx * settings.segment_progress_multiplier)
+                )
+                progress_callback(segment_progress, f"Transcribed {idx + 1} segment(s)...")
+        
+        if progress_callback:
+            progress_callback(95.0, "Formatting transcription results...")
+        
+        # Build result dictionary compatible with existing response format
+        if info is None:
+            raise TranscriptionFailed(
+                message="Transcription info object is None",
+                original_error="info is None",
+                file_path=file_path
+            )
+        
+        # Safely extract language and language_probability
+        try:
+            language_value = info.language if hasattr(info, 'language') else None
+            language_prob_value = getattr(info, 'language_probability', None)
         except Exception as e:
-            logger.error(f"Sync transcription failed: {e}")
-            raise
+            language_value = None
+            language_prob_value = None
+        
+        # Build segments list
+        segments_dict_list = []
+        text_parts = []
+        
+        for seg, seg_text in segments_with_text:
+            if not seg_text:
+                seg_text = getattr(seg, "text", "").strip()
+            
+            if seg_text:
+                text_parts.append(seg_text)
+            
+            segments_dict_list.append({
+                "start": getattr(seg, "start", 0.0),
+                "end": getattr(seg, "end", 0.0),
+                "text": seg_text,
+                "avg_logprob": getattr(seg, "avg_logprob", None),
+                "no_speech_prob": getattr(seg, "no_speech_prob", None)
+            })
+        
+        full_text = " ".join(text_parts) if text_parts else ""
+        
+        result = {
+            "text": full_text,
+            "language": language_value,
+            "language_probability": language_prob_value,
+            "segments": segments_dict_list
+        }
+        
+        if progress_callback:
+            progress_callback(100.0, "Transcription completed successfully")
+        
+        return result
     
     def _create_transcription_response(
         self,
         whisper_result: Dict[str, Any],
-        file_info: Dict[str, Any],
+        file_info: Optional[Dict[str, Any]],
         processing_time: float
     ) -> TranscriptionResponse:
         """Create TranscriptionResponse from Faster Whisper result."""
+        if whisper_result is None:
+            raise TranscriptionFailed(
+                message="Transcription result is None",
+                original_error="whisper_result is None",
+                file_path="unknown"
+            )
+        
+        # Extract text and segments
+        text_from_result = whisper_result.get("text", "")
+        segments_data = whisper_result.get("segments", [])
         
         # Extract segments
         segments = []
-        for segment in whisper_result.get("segments", []):
+        if segments_data is None:
+            segments_data = []
+        
+        for idx, segment in enumerate(segments_data):
+            seg_text = segment.get("text", "").strip() if isinstance(segment, dict) else ""
             segments.append(TranscriptionSegment(
-                start_time=segment.get("start", 0.0),
-                end_time=segment.get("end", 0.0),
-                text=segment.get("text", "").strip(),
+                start_time=segment.get("start", 0.0) if isinstance(segment, dict) else 0.0,
+                end_time=segment.get("end", 0.0) if isinstance(segment, dict) else 0.0,
+                text=seg_text,
                 confidence=None  # Faster Whisper doesn't provide direct confidence scores
             ))
         
@@ -571,15 +387,31 @@ class WhisperService:
                 # Convert to a 0-1 scale (rough approximation)
                 confidence_score = max(0, min(1, (avg_logprob + 1) / 2))
         
-        return TranscriptionResponse(
-            text=whisper_result.get("text", "").strip(),
+        # Safely extract duration from file_info (handle None case)
+        duration = 0.0
+        if file_info is not None:
+            duration = file_info.get("duration", 0.0)
+            if duration is None:
+                duration = 0.0
+        
+        # Use text from result, or build from segments if empty
+        final_text = text_from_result.strip() if text_from_result else ""
+        
+        if not final_text and segments:
+            segment_texts = [seg.text.strip() for seg in segments if hasattr(seg, 'text') and seg.text]
+            final_text = " ".join(segment_texts)
+        
+        response = TranscriptionResponse(
+            text=final_text,
             language=whisper_result.get("language"),
-            duration=file_info["duration"],
+            duration=duration,
             segments=segments,
             confidence_score=confidence_score,
             model_used=self._model_size,
             processing_time=round(processing_time, 3)
         )
+        
+        return response
     
     def get_model_info(self) -> ModelInfoResponse:
         """Get information about the currently loaded model."""
@@ -612,11 +444,8 @@ class WhisperService:
     async def cleanup(self):
         """Cleanup resources and shutdown executor."""
         try:
-            logger.info("Cleaning up WhisperService resources")
-            
             # Wait for active transcriptions to complete
             while self._active_transcriptions > 0:
-                logger.info(f"Waiting for {self._active_transcriptions} active transcriptions to complete")
                 await asyncio.sleep(1)
             
             # Shutdown executor
@@ -631,11 +460,9 @@ class WhisperService:
             # Force garbage collection
             import gc
             gc.collect()
-            
-            logger.info("WhisperService cleanup completed")
         
         except Exception as e:
-            logger.error(f"Error during cleanup: {e}")
+            pass
 
 
 # Global service instance

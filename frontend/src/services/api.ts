@@ -43,6 +43,8 @@
 
 import axios, { AxiosInstance } from 'axios';
 
+import { API_CONFIG as API_CONSTANTS } from '../utils/constants';
+
 /**
  * API configuration object with environment-based settings.
  * 
@@ -52,9 +54,9 @@ import axios, { AxiosInstance } from 'axios';
  */
 export const API_CONFIG = {
   /** Base URL for the backend API */
-  baseURL: (process.env as any).REACT_APP_API_URL || 'http://localhost:8080/api',
-  /** Request timeout in milliseconds */
-  timeout: 30000,
+  baseURL: API_CONSTANTS.BASE_URL,
+  /** Request timeout in milliseconds - set to 0 for no timeout (for long-running transcription jobs) */
+  timeout: API_CONSTANTS.TIMEOUT,
 };
 
 /**
@@ -90,11 +92,9 @@ apiClient.interceptors.request.use(
     // Add any auth tokens here if needed
     // config.headers.Authorization = `Bearer ${getAuthToken()}`;
     
-    console.log(`API Request: ${config.method?.toUpperCase()} ${config.url}`);
     return config;
   },
   (error) => {
-    console.error('API Request Error:', error);
     return Promise.reject(error);
   }
 );
@@ -115,24 +115,9 @@ apiClient.interceptors.request.use(
  */
 apiClient.interceptors.response.use(
   (response) => {
-    console.log(`API Response: ${response.status} ${response.config.url}`);
     return response;
   },
   (error) => {
-    // Extract meaningful error information
-    const errorMessage = error.response?.data?.message || 
-                        error.response?.data?.error || 
-                        error.message || 
-                        'Network error occurred';
-    
-    console.error('API Response Error:', {
-      status: error.response?.status,
-      statusText: error.response?.statusText,
-      message: errorMessage,
-      url: error.config?.url,
-      method: error.config?.method
-    });
-    
     return Promise.reject(error);
   }
 );

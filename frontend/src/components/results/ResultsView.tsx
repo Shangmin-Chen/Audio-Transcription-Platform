@@ -1,4 +1,16 @@
-// Results View Component
+/**
+ * Results View Component for displaying transcription results.
+ * 
+ * This component displays the complete transcription results including:
+ * - Full transcription text with copy/download functionality
+ * - Metadata (duration, language, confidence, processing time)
+ * - Model information
+ * - Formatted display with dark mode support
+ * 
+ * @author shangmin
+ * @version 1.0
+ * @since 2024
+ */
 
 import React, { useState } from 'react';
 import { 
@@ -19,6 +31,7 @@ import {
   formatConfidence,
   formatProcessingTime
 } from '../../utils/formatters';
+import { UI_CONFIG } from '../../utils/constants';
 import { Button } from '../common/Button';
 
 interface ResultsViewProps {
@@ -46,9 +59,10 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
     try {
       await navigator.clipboard.writeText(result.transcriptionText);
       setCopied(true);
-      setTimeout(() => setCopied(false), 2000);
+      setTimeout(() => setCopied(false), UI_CONFIG.COPY_FEEDBACK_TIMEOUT_MS);
     } catch (error) {
-      console.error('Failed to copy text:', error);
+      // Clipboard API may fail in some browsers/environments
+      // Fail silently as this is a non-critical operation
     }
   };
 
