@@ -77,11 +77,15 @@ If you prefer to run the services locally without Docker, follow these steps:
 
 ### Prerequisites
 
-- **Java 21** - For Spring Boot backend
+Before starting, ensure you have the following installed:
+
+- **Java JDK 21** - Required for Spring Boot backend (the `mvnw` Maven wrapper requires Java JDK to run)
 - **Maven 3.6+** - For building Java backend (or use included `mvnw`)
-- **Node.js 18+** and **npm** - For React frontend
-- **Python 3.11+** - For FastAPI transcription service
+- **Node.js 18+** and **npm** - For React frontend (you may need a specific Node/npm version)
+- **Python 3.12** - For FastAPI transcription service (specific version required - see Dockerfile)
 - **FFmpeg** - For audio processing (required by Python service)
+
+**📋 Need help checking versions or installing prerequisites?** See the [Prerequisites Guide](docs/getting-started/PREREQUISITES.md) for detailed instructions on checking your current versions and installation steps for each platform.
 
 ### Installation Steps
 
@@ -124,6 +128,8 @@ The Python service will be available at `http://localhost:5001`
 #### 3. Start Backend Service
 
 The Spring Boot backend acts as a proxy and validation layer.
+
+**Note:** The `mvnw` Maven wrapper requires Java JDK 21 to be installed and available in your PATH.
 
 ```bash
 cd backend
@@ -177,18 +183,22 @@ You'll need to run each service in a separate terminal window:
 
 #### Python Service Issues
 - **Model download fails**: Check internet connection. Models are downloaded from Hugging Face on first run.
+- **Python version error**: Ensure Python 3.12 is installed (specific version required). Check with `python3 --version`. See [Prerequisites Guide](docs/getting-started/PREREQUISITES.md) for installation help.
 - **FFmpeg not found**: Install FFmpeg:
   - macOS: `brew install ffmpeg`
   - Ubuntu/Debian: `sudo apt-get install ffmpeg`
   - Windows: Download from [ffmpeg.org](https://ffmpeg.org/download.html)
+  - See [Prerequisites Guide](docs/getting-started/PREREQUISITES.md) for detailed instructions.
 
 #### Backend Issues
 - **Port 7331 already in use**: Change port in `backend/src/main/resources/application.properties`
-- **Java version error**: Ensure Java 21 is installed: `java -version`
+- **Java version error**: Ensure Java JDK 21 is installed: `java -version`. The `mvnw` wrapper requires Java JDK to run.
+- **mvnw not working**: Make sure Java JDK 21 is installed and in your PATH. See [Prerequisites Guide](docs/getting-started/PREREQUISITES.md) for installation help.
 
 #### Frontend Issues
 - **Port 3737 already in use**: Change port in `frontend/package.json` scripts section
 - **npm install fails**: Try clearing cache: `npm cache clean --force`
+- **Node/npm version issues**: Ensure you have the correct Node.js and npm versions. See [Prerequisites Guide](docs/getting-started/PREREQUISITES.md) for version requirements and installation.
 
 ## 📁 Project Structure
 
@@ -347,6 +357,7 @@ docker compose ps
 
 ## 📚 Documentation
 
+- **[Prerequisites](docs/getting-started/PREREQUISITES.md)** - Check versions and install required software (Java, Python, Node.js)
 - **[Getting Started](docs/getting-started/QUICK_START.md)** - Quick start guide
 - **[Architecture](docs/architecture/OVERVIEW.md)** - Technical architecture guide
 - **[Configuration](docs/guides/CONFIGURATION.md)** - Configuration guide
