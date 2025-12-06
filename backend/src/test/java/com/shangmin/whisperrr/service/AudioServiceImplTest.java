@@ -81,7 +81,7 @@ class AudioServiceImplTest {
     @Test
     void testTranscribeAudio_WithFileTooLarge_ThrowsException() {
         when(mockFile.isEmpty()).thenReturn(false);
-        when(mockFile.getSize()).thenReturn(1500L * 1024 * 1024); // 1.5GB > 1GB limit
+        when(mockFile.getSize()).thenReturn(60L * 1024 * 1024); // 60MB > 50MB limit
         
         assertThrows(FileValidationException.class, () -> {
             audioService.transcribeAudio(mockFile, null);

@@ -121,6 +121,23 @@ export const formatSegmentTime = (timeInSeconds: number): string => {
 };
 
 /**
+ * Format segment timestamp range (start and end times) to MM:SS format.
+ * 
+ * @param startTime start time in seconds
+ * @param endTime end time in seconds
+ * @returns formatted timestamp range string (e.g., "00:15 - 00:23")
+ */
+export const formatSegmentTimestamp = (startTime: number, endTime: number): string => {
+  const formatTime = (timeInSeconds: number): string => {
+    const minutes = Math.floor(timeInSeconds / 60);
+    const seconds = Math.floor(timeInSeconds % 60);
+    return `${minutes}:${seconds.toString().padStart(2, '0')}`;
+  };
+  
+  return `${formatTime(startTime)} - ${formatTime(endTime)}`;
+};
+
+/**
  * Capitalize first letter of string and lowercase the rest.
  * 
  * @param str string to capitalize

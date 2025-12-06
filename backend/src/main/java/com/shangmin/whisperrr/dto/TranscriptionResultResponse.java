@@ -1,6 +1,7 @@
 package com.shangmin.whisperrr.dto;
 
 import java.time.LocalDateTime;
+import java.util.List;
 
 public class TranscriptionResultResponse {
     private String transcriptionText;
@@ -11,6 +12,7 @@ public class TranscriptionResultResponse {
     private Double processingTime;
     private LocalDateTime completedAt;
     private TranscriptionStatus status;
+    private List<TranscriptionSegment> segments;
     
     public TranscriptionResultResponse() {}
     
@@ -85,5 +87,13 @@ public class TranscriptionResultResponse {
     
     public void setStatus(TranscriptionStatus status) {
         this.status = status;
+    }
+    
+    public List<TranscriptionSegment> getSegments() {
+        return segments;
+    }
+    
+    public void setSegments(List<TranscriptionSegment> segments) {
+        this.segments = segments;
     }
 }

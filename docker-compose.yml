@@ -1,3 +1,13 @@
+# Docker Compose Configuration
+# ⚠️ WARNING: Docker is NOT recommended for running Whisperrr as it is slower and has lower accuracy
+# compared to running services natively. Use this only if Docker deployment is absolutely necessary.
+#
+# This configuration includes volume mounts for hot-reload during development.
+#
+# Usage:
+#   docker compose up              # Start services with hot-reload
+#   docker compose down             # Stop services
+
 services:
   python-service:
     build:
@@ -6,23 +16,43 @@ services:
     container_name: whisperrr-python
     environment:
       - MODEL_SIZE=base
-      - MAX_FILE_SIZE_MB=1000
+      - MAX_FILE_SIZE_MB=50
       - CORS_ORIGINS=http://localhost:7331,http://localhost:3737
       - LOG_LEVEL=INFO
+      # Performance tuning: COMPUTE_TYPE can be "int8" (faster) or "float32" (more accurate)
+      # CRITICAL: UVICORN_WORKERS must be 1 for in-memory job manager to work
+      # Multi-worker requires shared state (Redis/database) which we don't have
+      - COMPUTE_TYPE=int8
+      - UVICORN_WORKERS=1
+      - OMP_NUM_THREADS=4
+      - MKL_NUM_THREADS=4
+      # Uvicorn keepalive and timeout settings
+      - UVICORN_TIMEOUT_KEEP_ALIVE=65
+      - UVICORN_TIMEOUT_GRACEFUL_SHUTDOWN=30
     ports:
       - "5001:5001"
     volumes:
+      # Development: Mount source code for hot-reload
       - ./python-service/app:/app/app
+      # Persistent model cache (shared between dev and prod)
+      - whisperrr-model-cache:/home/appuser/.cache/huggingface
+    shm_size: '2gb'
     networks:
       - whisperrr-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:5001/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 60s
     deploy:
       resources:
         limits:
-          cpus: '2.0'
-          memory: 4G
+          cpus: '4.0'
+          memory: 8G
         reservations:
-          cpus: '0.5'
-          memory: 1G
+          cpus: '1.0'
+          memory: 2G
 
   backend:
     build:
@@ -32,14 +62,25 @@ services:
     environment:
       - WHISPERRR_SERVICE_URL=http://python-service:5001
       - CORS_ALLOWED_ORIGINS=http://localhost:3737,http://localhost:3738
+      # Increased timeouts for long-running transcription jobs
+      - WHISPERRR_SERVICE_CONNECT_TIMEOUT=10000
+      - WHISPERRR_SERVICE_READ_TIMEOUT=120000
     ports:
       - "7331:7331"
     volumes:
+      # Development: Mount source code for hot-reload
       - ./backend/src:/app/src
     networks:
       - whisperrr-network
     depends_on:
-      - python-service
+      python-service:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7331/actuator/health"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 45s
     deploy:
       resources:
         limits:
@@ -57,15 +98,34 @@ services:
     container_name: whisperrr-frontend
     environment:
       - REACT_APP_API_URL=http://localhost:7331/api
+      # Increase Node.js memory limit for development
+      - NODE_OPTIONS=--max-old-space-size=2048
     ports:
       - "3737:3737"
     volumes:
+      # Development: Mount source code for hot-reload
       - ./frontend/src:/app/src
+      # Prevent node_modules from being overwritten by host
+      - /app/node_modules
     networks:
       - whisperrr-network
     depends_on:
-      - backend
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:3737"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+      start_period: 30s
+
+volumes:
+  whisperrr-model-cache:
+    driver: local
 
 networks:
   whisperrr-network:
     driver: bridge
+    driver_opts:
+      com.docker.network.bridge.name: whisperrr0
+      com.docker.network.driver.mtu: 1500

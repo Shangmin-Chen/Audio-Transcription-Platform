@@ -85,7 +85,7 @@ Whisperrr is a **stateless, microservices-based** audio transcription platform w
 
 #### Configuration
 - **`frontend/src/utils/constants.ts`** - **CRITICAL**: Application configuration (SINGLE SOURCE OF TRUTH)
-  - Max file size (default: 1GB)
+  - Max file size (default: 50MB)
   - Supported file formats and extensions
   - Error and success messages
   - Environment variables can override defaults, but defaults are defined here
@@ -134,7 +134,7 @@ Whisperrr is a **stateless, microservices-based** audio transcription platform w
   - Server port: 7331
   - Python service URL: `http://localhost:5001`
   - CORS configuration
-  - File upload limits (1GB)
+  - File upload limits (50MB)
   - **NO DATABASE CONFIGURATION** - explicitly stateless
 
 - **`backend/src/main/java/com/shangmin/whisperrr/config/CorsConfig.java`** - CORS configuration
@@ -176,7 +176,7 @@ Whisperrr is a **stateless, microservices-based** audio transcription platform w
 #### Configuration
 - **`python-service/app/config.py`** - **CRITICAL**: Application settings (SINGLE SOURCE OF TRUTH)
   - Model size configuration (default: "base")
-  - File size limits (default: 1GB)
+  - File size limits (default: 50MB)
   - CORS origins
   - Supported formats
   - Environment variables can override defaults, but defaults are defined here

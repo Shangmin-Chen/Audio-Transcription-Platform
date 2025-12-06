@@ -52,10 +52,39 @@ from .utils import (
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    """Manage application lifespan: startup and shutdown."""
+    # Startup
+    cleanup_task = None
     try:
+        # Load Whisper model
         await whisper_service.load_model(settings.model_size)
+        
+        # Start background job cleanup task
+        async def periodic_cleanup():
+            """Periodically cleanup old jobs."""
+            while True:
+                try:
+                    await asyncio.sleep(settings.job_cleanup_interval_seconds)
+                    job_manager.cleanup_old_jobs()
+                    logger.info("Completed periodic job cleanup")
+                except asyncio.CancelledError:
+                    logger.info("Job cleanup task cancelled")
+                    break
+                except Exception as e:
+                    logger.error(f"Error in job cleanup: {e}", exc_info=True)
+        
+        cleanup_task = asyncio.create_task(periodic_cleanup())
+        logger.info(f"Started periodic job cleanup (interval: {settings.job_cleanup_interval_seconds}s)")
+        
         yield
     finally:
+        # Shutdown
+        if cleanup_task:
+            cleanup_task.cancel()
+            try:
+                await cleanup_task
+            except asyncio.CancelledError:
+                pass
         await whisper_service.cleanup()
 
 

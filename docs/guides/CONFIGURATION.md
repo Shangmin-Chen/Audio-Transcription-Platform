@@ -50,7 +50,7 @@ Each service defines all defaults in a central configuration file:
 **Location:** `backend/src/main/java/com/shangmin/whisperrr/config/AppConfig.java`
 
 **Contains:**
-- `MAX_FILE_SIZE_BYTES` - Maximum file size (1GB)
+- `MAX_FILE_SIZE_BYTES` - Maximum file size (50MB)
 - `MAX_FILE_SIZE_MB` - Maximum file size in MB
 - `PYTHON_SERVICE_CONNECT_TIMEOUT_MS` - Connection timeout (5 seconds)
 - `SUPPORTED_EXTENSIONS` - List of supported file extensions
@@ -77,7 +77,7 @@ if (fileSize > AppConfig.MAX_FILE_SIZE_BYTES) {
 server.port=7331
 whisperrr.service.url=http://localhost:5001
 cors.allowed-origins=http://localhost:3737,http://localhost:3738
-spring.servlet.multipart.max-file-size=1000MB
+spring.servlet.multipart.max-file-size=50MB
 ```
 
 **Production Overrides:** `backend/src/main/resources/application-prod.properties`
@@ -112,7 +112,7 @@ const timeout = UI_CONFIG.COPY_FEEDBACK_TIMEOUT_MS;
 **Build-time variables:**
 ```bash
 REACT_APP_API_URL=http://localhost:7331/api
-REACT_APP_MAX_FILE_SIZE=1000  # in MB
+REACT_APP_MAX_FILE_SIZE=50  # in MB
 ```
 
 **Note:** These must be set at build time, not runtime.
@@ -164,7 +164,7 @@ timeout = settings.ffmpeg_conversion_timeout_seconds
 | Variable | Description | Default |
 |----------|-------------|---------|
 | `REACT_APP_API_URL` | Backend API base URL | `http://localhost:7331/api` |
-| `REACT_APP_MAX_FILE_SIZE` | Max file size in MB | `1000` |
+| `REACT_APP_MAX_FILE_SIZE` | Max file size in MB | `50` |
 
 **Note:** Frontend environment variables must be set at build time.
 
@@ -174,7 +174,7 @@ See [Environment Variables Reference](ENVIRONMENT_VARIABLES.md) for complete lis
 
 **Common variables:**
 - `MODEL_SIZE` - Whisper model size (default: `base`)
-- `MAX_FILE_SIZE_MB` - Max file size in MB (default: `1000`)
+- `MAX_FILE_SIZE_MB` - Max file size in MB (default: `50`)
 - `CORS_ORIGINS` - CORS allowed origins
 - `LOG_LEVEL` - Log level (default: `INFO`)
 - `SERVER_PORT` - Server port (default: `5001`)

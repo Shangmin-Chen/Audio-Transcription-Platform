@@ -11,7 +11,7 @@ class Settings(BaseSettings):
     
     # Model configuration
     model_size: str = "base"
-    max_file_size_mb: int = 1000  # 1GB - production-ready limit
+    max_file_size_mb: int = 50  # 50MB - demo site limit
     upload_dir: str = "/tmp/whisperrr_uploads"
     log_level: str = "INFO"
     
@@ -29,6 +29,17 @@ class Settings(BaseSettings):
     # Performance and monitoring
     enable_metrics: bool = True
     enable_health_checks: bool = True
+    
+    # Performance tuning configuration
+    # Uvicorn worker count (set via UVICORN_WORKERS env var, default calculated as (2 * CPU_COUNT) + 1)
+    uvicorn_workers: int = 4
+    # Compute type for Whisper model (int8, float16, float32)
+    # int8: Fastest on CPU, lower accuracy
+    # float32: Best accuracy, slower on CPU
+    # float16: GPU only, good balance
+    compute_type: str = "int8"  # Can be overridden via COMPUTE_TYPE env var
+    # Thread count for NumPy/OpenMP operations (set via OMP_NUM_THREADS env var)
+    num_threads: int = 4
     
     # Supported audio formats (including video formats that will be converted)
     supported_formats: List[str] = [
@@ -65,7 +76,8 @@ class Settings(BaseSettings):
     segment_progress_max: float = 90.0  # Maximum segment progress
     
     # Job management
-    job_cleanup_max_age_seconds: int = 3600  # Job cleanup max age: 1 hour
+    job_cleanup_max_age_seconds: int = 7200  # Job cleanup max age: 2 hours (must be > MAX_JOB_DURATION)
+    job_cleanup_interval_seconds: int = 300  # Run cleanup every 5 minutes
     
     # Server configuration (for development)
     server_host: str = "0.0.0.0"
@@ -124,6 +136,32 @@ class Settings(BaseSettings):
         """Validate max file size is reasonable."""
         if v <= 0:
             raise ValueError("Max file size must be greater than 0 MB")
+        return v
+    
+    @validator("compute_type")
+    def validate_compute_type(cls, v):
+        """Validate compute type is supported."""
+        valid_types = ["int8", "float16", "float32"]
+        if v.lower() not in valid_types:
+            raise ValueError(f"Compute type must be one of: {valid_types}")
+        return v.lower()
+    
+    @validator("uvicorn_workers")
+    def validate_uvicorn_workers(cls, v):
+        """Validate uvicorn worker count is reasonable."""
+        if v < 1:
+            raise ValueError("Uvicorn workers must be at least 1")
+        if v > 32:
+            raise ValueError("Uvicorn workers should not exceed 32")
+        return v
+    
+    @validator("num_threads")
+    def validate_num_threads(cls, v):
+        """Validate thread count is reasonable."""
+        if v < 1:
+            raise ValueError("Thread count must be at least 1")
+        if v > 64:
+            raise ValueError("Thread count should not exceed 64")
         return v
     
     @validator("upload_dir")

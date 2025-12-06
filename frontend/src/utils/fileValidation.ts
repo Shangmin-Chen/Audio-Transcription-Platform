@@ -6,7 +6,7 @@
  * @since 2024
  */
 
-import { APP_CONFIG, ERROR_MESSAGES } from './constants';
+import { APP_CONFIG, ERROR_MESSAGES, FILE_SIZE_CONFIG } from './constants';
 
 export interface ValidationResult {
   isValid: boolean;
@@ -84,8 +84,6 @@ export const getFileExtension = (filename: string): string => {
  * @param bytes file size in bytes
  * @returns formatted size string
  */
-import { FILE_SIZE_CONFIG } from './constants';
-
 export const formatFileSize = (bytes: number): string => {
   if (bytes === 0) return '0 Bytes';
 

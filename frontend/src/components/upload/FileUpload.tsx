@@ -10,7 +10,7 @@
  *   - Click-to-browse file selection
  *   - Real-time file validation with error messages
  *   - Support for multiple audio formats (MP3, WAV, M4A, FLAC, OGG, WMA)
- *   - File size validation (max 1GB)
+ *   - File size validation (max 50MB)
  *   - Responsive design with dark mode support
  *   - Accessible keyboard navigation
  * 
@@ -24,7 +24,7 @@
  * 
  * File Validation:
  *   - Supported formats: MP3, WAV, M4A, FLAC, OGG, WMA
- *   - Maximum file size: 1GB
+ *   - Maximum file size: 50MB
  *   - MIME type validation
  *   - File extension validation
  *   - Real-time feedback for invalid files
@@ -206,7 +206,7 @@ export const FileUpload: React.FC<FileUploadProps> = ({
           {/* Supported Formats */}
           {!file && (
             <div className="text-xs text-gray-400 dark:text-gray-500">
-              Supports: MP3, WAV, M4A, FLAC, OGG, WMA (max 1GB)
+              Supports: MP3, WAV, M4A, FLAC, OGG, WMA (max 50MB)
             </div>
           )}
         </div>

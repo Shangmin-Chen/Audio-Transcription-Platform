@@ -23,6 +23,9 @@ export interface TranscriptionResultResponse {
   
   /** Status of the transcription (should always be COMPLETED) */
   status: TranscriptionStatus;
+  
+  /** Individual segments with timing information */
+  segments?: TranscriptionSegment[];
 }
 
 export interface TranscriptionSegment {

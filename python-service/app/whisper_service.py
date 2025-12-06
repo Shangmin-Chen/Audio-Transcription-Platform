@@ -63,6 +63,12 @@ class WhisperService:
         self._device = self._detect_device()
         self._compute_type = self._get_compute_type()
         
+        # Log device and compute type for debugging
+        self._logger.info(
+            f"WhisperService initialized: device={self._device}, compute_type={self._compute_type}, "
+            f"max_concurrent_transcriptions={settings.max_concurrent_transcriptions}"
+        )
+        
         # Model descriptions from config
         self._model_descriptions = settings.model_descriptions
         
@@ -86,11 +92,25 @@ class WhisperService:
         return "cpu"
     
     def _get_compute_type(self) -> str:
-        """Get optimal compute type based on device."""
+        """Get optimal compute type based on device and configuration."""
+        # Check if compute type is explicitly set via config/environment
+        configured_type = settings.compute_type.lower()
+        
+        # Validate compute type is appropriate for the device
         if self._device == "cuda":
-            return "float16"  # Use FP16 on GPU for better performance
+            # GPU supports float16 and float32
+            if configured_type in ["float16", "float32"]:
+                return configured_type
+            # Default to float16 for GPU (best performance/accuracy balance)
+            return "float16"
         else:
-            return "int8"  # Use INT8 on CPU for better performance
+            # CPU supports int8 and float32
+            # int8 is faster but less accurate
+            # float32 is slower but more accurate (better for production with sufficient resources)
+            if configured_type in ["int8", "float32"]:
+                return configured_type
+            # Default to int8 for CPU (faster, but can be overridden via COMPUTE_TYPE env var)
+            return "int8"
     
     async def load_model(self, model_size: str = None) -> dict:
         """Load a Faster Whisper model."""

@@ -22,6 +22,7 @@ import {
   JobSubmissionResponse,
   JobProgressResponse
 } from '../types/transcription';
+import { TRANSCRIPTION_CONFIG } from '../utils/constants';
 
 export interface UseTranscriptionReturn {
   transcriptionResult: TranscriptionResultResponse | null;
@@ -37,8 +38,6 @@ export interface UseTranscriptionReturn {
   isIdle: boolean;
 }
 
-import { TRANSCRIPTION_CONFIG } from '../utils/constants';
-
 /**
  * Hook for managing transcription workflow with polling support.
  * 
@@ -52,19 +51,72 @@ export const useTranscription = (): UseTranscriptionReturn => {
   const [isTranscribing, setIsTranscribing] = useState<boolean>(false);
   
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
-  const pollAttemptsRef = useRef<number>(0);
+  const consecutiveErrorsRef = useRef<number>(0);
+  const currentPollIntervalRef = useRef<number>(TRANSCRIPTION_CONFIG.INITIAL_POLL_INTERVAL_MS);
+  const jobStartTimeRef = useRef<number | null>(null);
+  const lastProgressUpdateTimeRef = useRef<number | null>(null);
+  const lastProgressValueRef = useRef<number>(0);
+  const MAX_CONSECUTIVE_ERRORS = 5; // Allow up to 5 consecutive errors before giving up
 
   const stopPolling = useCallback(() => {
     if (pollIntervalRef.current) {
-      clearInterval(pollIntervalRef.current);
+      clearTimeout(pollIntervalRef.current);
       pollIntervalRef.current = null;
     }
-    pollAttemptsRef.current = 0;
+    consecutiveErrorsRef.current = 0;
+    currentPollIntervalRef.current = TRANSCRIPTION_CONFIG.INITIAL_POLL_INTERVAL_MS;
+    jobStartTimeRef.current = null;
+    lastProgressUpdateTimeRef.current = null;
+    lastProgressValueRef.current = 0;
   }, []);
 
   const pollJobProgress = useCallback(async (jobId: string) => {
+    const now = Date.now();
+    
+    // Check if job has been running too long
+    if (jobStartTimeRef.current !== null) {
+      const elapsed = now - jobStartTimeRef.current;
+      if (elapsed > TRANSCRIPTION_CONFIG.MAX_JOB_DURATION_MS) {
+        stopPolling();
+        setError(`Transcription timed out after ${Math.round(elapsed / 60000)} minutes. The job may still be processing on the server.`);
+        setIsTranscribing(false);
+        return;
+      }
+    }
+    
+    // Check if job appears to be hung (no progress update for too long)
+    if (lastProgressUpdateTimeRef.current !== null) {
+      const timeSinceLastUpdate = now - lastProgressUpdateTimeRef.current;
+      if (timeSinceLastUpdate > TRANSCRIPTION_CONFIG.MAX_STALL_TIME_MS) {
+        stopPolling();
+        setError(`Job appears to be stuck (no progress update for ${Math.round(timeSinceLastUpdate / 60000)} minutes). Please try again.`);
+        setIsTranscribing(false);
+        return;
+      }
+    }
+    
     try {
       const progressResponse: JobProgressResponse = await TranscriptionService.getJobProgress(jobId);
+      
+      // Reset consecutive errors on successful response
+      consecutiveErrorsRef.current = 0;
+      setError(null); // Clear any previous error messages
+      
+      // Check if progress actually changed
+      const progressChanged = progressResponse.progress !== lastProgressValueRef.current;
+      if (progressChanged) {
+        lastProgressUpdateTimeRef.current = now;
+        lastProgressValueRef.current = progressResponse.progress;
+        
+        // Reset polling interval on progress (job is active)
+        currentPollIntervalRef.current = TRANSCRIPTION_CONFIG.INITIAL_POLL_INTERVAL_MS;
+      } else {
+        // No progress change - increase polling interval (adaptive backoff)
+        currentPollIntervalRef.current = Math.min(
+          currentPollIntervalRef.current + TRANSCRIPTION_CONFIG.POLL_INTERVAL_BACKOFF_MS,
+          TRANSCRIPTION_CONFIG.MAX_POLL_INTERVAL_MS
+        );
+      }
       
       setProgress(progressResponse.progress);
       setStatusMessage(progressResponse.message);
@@ -82,18 +134,38 @@ export const useTranscription = (): UseTranscriptionReturn => {
         setProgress(0);
         setIsTranscribing(false);
       } else {
-        // Continue polling
-        pollAttemptsRef.current += 1;
-        if (pollAttemptsRef.current >= TRANSCRIPTION_CONFIG.MAX_POLL_ATTEMPTS) {
-          stopPolling();
-          setError('Transcription timed out. Please try again.');
-          setIsTranscribing(false);
+        // Continue polling with adaptive interval
+        // Schedule next poll with current interval
+        if (pollIntervalRef.current) {
+          clearTimeout(pollIntervalRef.current);
         }
+        pollIntervalRef.current = setTimeout(() => {
+          pollJobProgress(jobId);
+        }, currentPollIntervalRef.current);
       }
     } catch (err: any) {
-      stopPolling();
-      setError(err.response?.data?.message || err.message || 'Failed to check job progress');
-      setIsTranscribing(false);
+      consecutiveErrorsRef.current += 1;
+      
+      // Only stop polling after multiple consecutive errors
+      if (consecutiveErrorsRef.current >= MAX_CONSECUTIVE_ERRORS) {
+        stopPolling();
+        const errorMessage = err.response?.data?.message || err.message || 'Failed to check job progress';
+        setError(errorMessage);
+        setIsTranscribing(false);
+      } else {
+        // Log the error but continue polling - might be a transient network issue
+        console.warn(`Polling error (${consecutiveErrorsRef.current}/${MAX_CONSECUTIVE_ERRORS}):`, err.message);
+        // Update status message to indicate retrying
+        setStatusMessage(`Checking progress... (retrying after error)`);
+        
+        // Continue polling with current interval even after error
+        if (pollIntervalRef.current) {
+          clearTimeout(pollIntervalRef.current);
+        }
+        pollIntervalRef.current = setTimeout(() => {
+          pollJobProgress(jobId);
+        }, currentPollIntervalRef.current);
+      }
     }
   }, [stopPolling]);
 
@@ -104,16 +176,16 @@ export const useTranscription = (): UseTranscriptionReturn => {
       setProgress(0);
       setStatusMessage(data.message || 'Job submitted, starting transcription...');
       
-      // Set up polling interval
-      const poll = () => {
-        if (data.jobId) {
-          pollJobProgress(data.jobId);
-        }
-      };
+      // Initialize tracking for new job
+      jobStartTimeRef.current = Date.now();
+      lastProgressUpdateTimeRef.current = Date.now();
+      lastProgressValueRef.current = 0;
+      currentPollIntervalRef.current = TRANSCRIPTION_CONFIG.INITIAL_POLL_INTERVAL_MS;
       
-      // Start polling immediately, then continue at interval
-      poll();
-      pollIntervalRef.current = setInterval(poll, TRANSCRIPTION_CONFIG.POLL_INTERVAL_MS);
+      // Start polling immediately
+      if (data.jobId) {
+        pollJobProgress(data.jobId);
+      }
     },
     onError: (error: any) => {
       setError(error.response?.data?.message || error.message || 'Failed to submit transcription job');

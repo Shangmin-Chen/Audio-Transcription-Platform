@@ -15,11 +15,11 @@ import java.util.Set;
  */
 public final class AppConfig {
     
-    /** Maximum file size: 1GB in bytes. */
-    public static final long MAX_FILE_SIZE_BYTES = 1000L * 1024 * 1024;
+    /** Maximum file size: 50MB in bytes. */
+    public static final long MAX_FILE_SIZE_BYTES = 50L * 1024 * 1024;
     
     /** Maximum file size in MB. */
-    public static final int MAX_FILE_SIZE_MB = 1000;
+    public static final int MAX_FILE_SIZE_MB = 50;
     
     /** Default connection timeout for Python service: 5 seconds. */
     public static final int PYTHON_SERVICE_CONNECT_TIMEOUT_MS = 5000;

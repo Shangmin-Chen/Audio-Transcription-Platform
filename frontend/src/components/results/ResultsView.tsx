@@ -19,7 +19,9 @@ import {
   Volume2, 
   Clock,
   FileText,
-  CheckCircle
+  CheckCircle,
+  List,
+  AlignLeft
 } from 'lucide-react';
 import { clsx } from 'clsx';
 import { 
@@ -29,7 +31,8 @@ import {
   formatDuration, 
   formatTimestamp, 
   formatConfidence,
-  formatProcessingTime
+  formatProcessingTime,
+  formatSegmentTimestamp
 } from '../../utils/formatters';
 import { UI_CONFIG } from '../../utils/constants';
 import { Button } from '../common/Button';
@@ -44,6 +47,7 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
   className,
 }) => {
   const [copied, setCopied] = useState(false);
+  const [viewMode, setViewMode] = useState<'full' | 'segments'>('full');
 
   if (!result.transcriptionText) {
     return (
@@ -192,27 +196,94 @@ export const ResultsView: React.FC<ResultsViewProps> = ({
         </div>
       </div>
 
-      {/* Main Transcription Text */}
+      {/* Main Transcription Text / Segments */}
       <div className="card p-6">
-        <div className="flex items-center justify-between mb-4">
+        <div className="flex items-center justify-between mb-6">
           <h3 className="text-lg font-semibold text-gray-900 dark:text-white">
             Transcription
           </h3>
-          {result.confidence !== undefined && result.confidence !== null && (
-            <div className="flex items-center gap-2">
-              <span className="text-sm text-gray-500 dark:text-gray-400">Confidence:</span>
-              <span className="text-sm font-medium text-gray-900 dark:text-white">
-                {formatConfidence(result.confidence)}
-              </span>
-            </div>
-          )}
+          <div className="flex items-center gap-3">
+            {result.confidence !== undefined && result.confidence !== null && (
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-gray-500 dark:text-gray-400">Confidence:</span>
+                <span className="text-sm font-medium text-gray-900 dark:text-white">
+                  {formatConfidence(result.confidence)}
+                </span>
+              </div>
+            )}
+            {result.segments && result.segments.length > 0 && (
+              <div className="flex items-center gap-2 border border-gray-200 dark:border-gray-700 rounded-lg overflow-hidden">
+                <button
+                  onClick={() => setViewMode('full')}
+                  className={clsx(
+                    'px-3 py-1.5 text-sm font-medium transition-colors',
+                    viewMode === 'full'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                  )}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <AlignLeft className="h-4 w-4" />
+                    Full Text
+                  </div>
+                </button>
+                <button
+                  onClick={() => setViewMode('segments')}
+                  className={clsx(
+                    'px-3 py-1.5 text-sm font-medium transition-colors',
+                    viewMode === 'segments'
+                      ? 'bg-blue-600 text-white'
+                      : 'bg-white dark:bg-gray-800 text-gray-700 dark:text-gray-300 hover:bg-gray-50 dark:hover:bg-gray-700'
+                  )}
+                >
+                  <div className="flex items-center gap-1.5">
+                    <List className="h-4 w-4" />
+                    Segments
+                  </div>
+                </button>
+              </div>
+            )}
+          </div>
         </div>
         
-        <div className="prose prose-gray dark:prose-invert max-w-none">
-          <p className="text-gray-900 dark:text-white leading-relaxed whitespace-pre-wrap">
-            {result.transcriptionText}
-          </p>
-        </div>
+        {viewMode === 'full' ? (
+          <div className="prose prose-gray dark:prose-invert max-w-none">
+            <p className="text-gray-900 dark:text-white leading-relaxed whitespace-pre-wrap text-base">
+              {result.transcriptionText}
+            </p>
+          </div>
+        ) : result.segments && result.segments.length > 0 ? (
+          <div className="space-y-3 max-h-[600px] overflow-y-auto pr-2">
+            {result.segments.map((segment, index) => (
+              <div
+                key={index}
+                className="group flex gap-4 p-4 rounded-lg bg-gray-50 dark:bg-gray-800/50 hover:bg-gray-100 dark:hover:bg-gray-800 transition-colors border border-transparent hover:border-gray-200 dark:hover:border-gray-700"
+              >
+                <div className="flex-shrink-0">
+                  <div className="px-2.5 py-1 bg-blue-100 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300 rounded-md text-xs font-mono font-medium min-w-[100px] text-center">
+                    {formatSegmentTimestamp(segment.startTime, segment.endTime)}
+                  </div>
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-gray-900 dark:text-white leading-relaxed text-base">
+                    {segment.text}
+                  </p>
+                  {segment.confidence !== undefined && segment.confidence !== null && (
+                    <p className="text-xs text-gray-500 dark:text-gray-400 mt-1">
+                      Confidence: {formatConfidence(segment.confidence)}
+                    </p>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="prose prose-gray dark:prose-invert max-w-none">
+            <p className="text-gray-900 dark:text-white leading-relaxed whitespace-pre-wrap text-base">
+              {result.transcriptionText}
+            </p>
+          </div>
+        )}
       </div>
 
 

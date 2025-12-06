@@ -116,7 +116,7 @@ public class GlobalExceptionHandler {
         logger.warn("File size exceeded limit [{}]: {}", correlationId, ex.getMessage());
         ErrorResponse error = new ErrorResponse(
             "FILE_SIZE_EXCEEDED",
-            "File size exceeds the maximum allowed limit of 1GB",
+            "File size exceeds the maximum allowed limit of 50MB",
             LocalDateTime.now(),
             correlationId
         );

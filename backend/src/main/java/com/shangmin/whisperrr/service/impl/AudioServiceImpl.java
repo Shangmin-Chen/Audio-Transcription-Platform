@@ -3,6 +3,7 @@ package com.shangmin.whisperrr.service.impl;
 import com.shangmin.whisperrr.dto.JobProgressResponse;
 import com.shangmin.whisperrr.dto.JobSubmissionResponse;
 import com.shangmin.whisperrr.dto.TranscriptionResultResponse;
+import com.shangmin.whisperrr.dto.TranscriptionSegment;
 import com.shangmin.whisperrr.dto.TranscriptionStatus;
 import com.shangmin.whisperrr.exception.FileValidationException;
 import com.shangmin.whisperrr.exception.TranscriptionProcessingException;
@@ -28,6 +29,8 @@ import org.springframework.web.util.UriComponentsBuilder;
 
 import java.time.LocalDateTime;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.Map;
 
 /**
@@ -52,17 +55,55 @@ public class AudioServiceImpl implements AudioService {
     @Value("${whisperrr.service.url}")
     private String pythonServiceUrl;
     
-    @Value("${whisperrr.service.connect-timeout:5000}")
+    @Value("${whisperrr.service.connect-timeout:30000}")
     private int connectTimeout;
     
+    @Value("${whisperrr.service.read-timeout:60000}")
+    private int readTimeout;
+    
     /**
-     * Initialize RestTemplate with connection timeout configuration.
+     * Initialize RestTemplate with connection pooling and timeout configuration.
+     * Uses Apache HttpClient with connection pooling for better performance in Docker.
      */
     @PostConstruct
     public void initRestTemplate() {
-        SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
-        factory.setConnectTimeout(connectTimeout);
-        this.restTemplate = new RestTemplate(factory);
+        try {
+            // Try to use Apache HttpClient with connection pooling
+            Class.forName("org.apache.hc.client5.http.impl.classic.HttpClients");
+            
+            org.apache.hc.client5.http.config.RequestConfig requestConfig = org.apache.hc.client5.http.config.RequestConfig.custom()
+                .setConnectTimeout(org.apache.hc.core5.util.Timeout.ofMilliseconds(connectTimeout))
+                .setResponseTimeout(org.apache.hc.core5.util.Timeout.ofMilliseconds(readTimeout))
+                .build();
+            
+            org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager connectionManager = 
+                new org.apache.hc.client5.http.impl.io.PoolingHttpClientConnectionManager();
+            connectionManager.setMaxTotal(20); // Max total connections
+            connectionManager.setDefaultMaxPerRoute(10); // Max connections per route
+            
+            org.apache.hc.client5.http.impl.classic.CloseableHttpClient httpClient = 
+                org.apache.hc.client5.http.impl.classic.HttpClients.custom()
+                    .setConnectionManager(connectionManager)
+                    .setDefaultRequestConfig(requestConfig)
+                    .setKeepAliveStrategy((response, context) -> 
+                        org.apache.hc.core5.util.TimeValue.ofSeconds(60)) // 60s keepalive
+                    .evictIdleConnections(org.apache.hc.core5.util.TimeValue.ofSeconds(30))
+                    .build();
+            
+            org.springframework.http.client.HttpComponentsClientHttpRequestFactory factory = 
+                new org.springframework.http.client.HttpComponentsClientHttpRequestFactory(httpClient);
+            
+            this.restTemplate = new RestTemplate(factory);
+            logger.info("RestTemplate initialized with Apache HttpClient connection pooling (max={}, per-route={})", 
+                connectionManager.getMaxTotal(), connectionManager.getDefaultMaxPerRoute());
+        } catch (ClassNotFoundException e) {
+            // Fallback to SimpleClientHttpRequestFactory if Apache HttpClient not available
+            logger.warn("Apache HttpClient not available, falling back to SimpleClientHttpRequestFactory");
+            SimpleClientHttpRequestFactory factory = new SimpleClientHttpRequestFactory();
+            factory.setConnectTimeout(connectTimeout);
+            factory.setReadTimeout(readTimeout);
+            this.restTemplate = new RestTemplate(factory);
+        }
     }
     
     @Override
@@ -121,6 +162,7 @@ public class AudioServiceImpl implements AudioService {
                 resultResponse.setProcessingTime(extractDoubleSafely(result.get("processing_time")));
                 resultResponse.setCompletedAt(LocalDateTime.now());
                 resultResponse.setStatus(TranscriptionStatus.COMPLETED);
+                resultResponse.setSegments(extractSegments(result));
                 
                 return resultResponse;
             } else {
@@ -215,6 +257,82 @@ public class AudioServiceImpl implements AudioService {
             logger.warn("Failed to extract double value from: {}", value, e);
             return null;
         }
+    }
+    
+    /**
+     * Extract transcription segments from Python service response.
+     * 
+     * @param result the response map from Python service
+     * @return list of transcription segments, or empty list if not found
+     */
+    private List<TranscriptionSegment> extractSegments(Map<String, Object> result) {
+        List<TranscriptionSegment> segments = new ArrayList<>();
+        
+        Object segmentsObj = result.get("segments");
+        if (segmentsObj instanceof java.util.List) {
+            @SuppressWarnings("unchecked")
+            java.util.List<Map<String, Object>> segmentsList = (java.util.List<Map<String, Object>>) segmentsObj;
+            
+            if (segmentsList != null) {
+                for (Map<String, Object> segmentMap : segmentsList) {
+                    try {
+                        TranscriptionSegment segment = new TranscriptionSegment();
+                        
+                        // Extract start time
+                        Object startObj = segmentMap.get("start");
+                        if (startObj != null) {
+                            Double startTime = extractDoubleSafely(startObj);
+                            if (startTime != null) {
+                                segment.setStartTime(startTime);
+                            }
+                        }
+                        
+                        // Extract end time
+                        Object endObj = segmentMap.get("end");
+                        if (endObj != null) {
+                            Double endTime = extractDoubleSafely(endObj);
+                            if (endTime != null) {
+                                segment.setEndTime(endTime);
+                            }
+                        }
+                        
+                        // Extract text
+                        Object textObj = segmentMap.get("text");
+                        if (textObj != null) {
+                            String text = String.valueOf(textObj).trim();
+                            if (!text.isEmpty()) {
+                                segment.setText(text);
+                            }
+                        }
+                        
+                        // Extract confidence (optional)
+                        Object confidenceObj = segmentMap.get("confidence");
+                        if (confidenceObj == null) {
+                            // Try avg_logprob as fallback (needs conversion)
+                            Object avgLogProbObj = segmentMap.get("avg_logprob");
+                            if (avgLogProbObj != null) {
+                                Double avgLogProb = extractDoubleSafely(avgLogProbObj);
+                                if (avgLogProb != null) {
+                                    // Convert log probability to approximate confidence (0-1 scale)
+                                    segment.setConfidence(Math.max(0, Math.min(1, (avgLogProb + 1) / 2)));
+                                }
+                            }
+                        } else {
+                            segment.setConfidence(extractDoubleSafely(confidenceObj));
+                        }
+                        
+                        // Only add segment if it has required fields
+                        if (segment.getText() != null && !segment.getText().isEmpty()) {
+                            segments.add(segment);
+                        }
+                    } catch (Exception e) {
+                        logger.warn("Failed to extract segment: {}", segmentMap, e);
+                    }
+                }
+            }
+        }
+        
+        return segments;
     }
     
     /**
@@ -334,6 +452,7 @@ public class AudioServiceImpl implements AudioService {
                     transcriptionResult.setProcessingTime(extractDoubleSafely(resultMap.get("processing_time")));
                     transcriptionResult.setCompletedAt(LocalDateTime.now());
                     transcriptionResult.setStatus(TranscriptionStatus.COMPLETED);
+                    transcriptionResult.setSegments(extractSegments(resultMap));
                     
                     progressResponse.setResult(transcriptionResult);
                 }

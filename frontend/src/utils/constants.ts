@@ -1,7 +1,7 @@
 // Single source of truth for configuration
 // Environment variables can override defaults, but defaults are defined here
 const getMaxFileSize = (): number => {
-  // Allow override via env var, but default to 1GB
+  // Allow override via env var, but default to 50MB
   const envSize = process.env.REACT_APP_MAX_FILE_SIZE;
   if (envSize) {
     const sizeMB = parseInt(envSize, 10);
@@ -9,7 +9,7 @@ const getMaxFileSize = (): number => {
       return sizeMB * 1024 * 1024;
     }
   }
-  return 1000 * 1024 * 1024; // Default: 1GB - production-ready limit
+  return 50 * 1024 * 1024; // Default: 50MB - demo site limit
 };
 
 export const APP_CONFIG = {
@@ -55,7 +55,7 @@ export const ROUTES = {
 } as const;
 
 export const ERROR_MESSAGES = {
-  FILE_TOO_LARGE: 'File size must be less than 1GB',
+  FILE_TOO_LARGE: 'File size must be less than 50MB',
   INVALID_FORMAT: 'Unsupported format. Please use audio formats (MP3, WAV, M4A, FLAC, OGG, WMA, AAC) or video formats (MP4, AVI, MOV, MKV, FLV, WEBM, WMV, M4V, 3GP)',
   UPLOAD_FAILED: 'Failed to upload file. Please try again.',
   NETWORK_ERROR: 'Network error. Please check your connection.',
@@ -71,13 +71,23 @@ export const SUCCESS_MESSAGES = {
 
 /**
  * Transcription workflow configuration constants.
+ * Optimized for Docker networking with single-worker Python service.
  */
 export const TRANSCRIPTION_CONFIG = {
-  /** Poll interval for job progress checks in milliseconds. */
-  POLL_INTERVAL_MS: 1000,
+  /** Initial poll interval for job progress checks in milliseconds. */
+  INITIAL_POLL_INTERVAL_MS: 1500, // Start with 1.5 seconds (faster initial polling)
   
-  /** Maximum poll attempts (5 minutes at 1 second intervals). */
-  MAX_POLL_ATTEMPTS: 300,
+  /** Maximum poll interval (adaptive polling will increase up to this). */
+  MAX_POLL_INTERVAL_MS: 5000, // Max 5 seconds between polls (reduced for better responsiveness)
+  
+  /** How much to increase polling interval each time (adaptive backoff). */
+  POLL_INTERVAL_BACKOFF_MS: 500, // Increase by 500ms each time (gentler backoff)
+  
+  /** Maximum time to wait for a job to complete (in milliseconds). */
+  MAX_JOB_DURATION_MS: 2 * 60 * 60 * 1000, // 2 hours (supports very long audio files)
+  
+  /** Maximum time without progress update before considering job hung (in milliseconds). */
+  MAX_STALL_TIME_MS: 10 * 60 * 1000, // 10 minutes without update = hung
 } as const;
 
 /**

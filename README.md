@@ -12,7 +12,7 @@ Whisperrr transforms audio content into accurate, searchable text using state-of
 - **High Accuracy**: Powered by Faster Whisper AI models (tiny to large-v3)
 - **Fast Performance**: Up to 4x faster than OpenAI Whisper with less memory usage
 - **Multi-Language**: Support for 99+ languages with automatic detection
-- **Multiple Formats**: MP3, WAV, M4A, FLAC, OGG, WMA (up to 1GB)
+- **Multiple Formats**: MP3, WAV, M4A, FLAC, OGG, WMA (up to 50MB)
 - **Stateless Architecture**: No database required - simplified deployment
 - **Modern UI**: Responsive React interface with drag-and-drop upload
 - **Production Ready**: Comprehensive error handling and monitoring
@@ -90,7 +90,7 @@ Whisperrr/
 server.port=7331
 whisperrr.service.url=http://localhost:5001
 cors.allowed-origins=http://localhost:3737,http://localhost:3738
-spring.servlet.multipart.max-file-size=1000MB
+spring.servlet.multipart.max-file-size=50MB
 ```
 
 #### Python Service (`python-service/app/config.py`)
@@ -98,13 +98,13 @@ spring.servlet.multipart.max-file-size=1000MB
 
 Default configuration:
 - Model size: `base` (tiny, base, small, medium, large, large-v2, large-v3)
-- Max file size: `1GB`
+- Max file size: `50MB`
 - CORS origins: `http://localhost:7331,http://localhost:3737`
 - Log level: `INFO`
 
 To override defaults, set environment variables:
 ```bash
-export MAX_FILE_SIZE_MB=1000
+export MAX_FILE_SIZE_MB=50
 export MODEL_SIZE=small
 ```
 
@@ -112,13 +112,13 @@ export MODEL_SIZE=small
 **Single source of truth:** All defaults are defined in `constants.ts`. Environment variables can override defaults if needed.
 
 Default configuration:
-- Max file size: `1GB`
+- Max file size: `50MB`
 - API URL: `http://localhost:7331/api` (can be overridden via `REACT_APP_API_URL`)
 
 To override defaults, set environment variables at build time:
 ```bash
 export REACT_APP_API_URL=http://localhost:7331/api
-export REACT_APP_MAX_FILE_SIZE=1000
+export REACT_APP_MAX_FILE_SIZE=50
 ```
 
 ## 🌐 API Documentation
@@ -221,7 +221,7 @@ docker compose ps
 - Check available system resources
 
 ### File Upload Failures
-- Verify file size is under 1GB
+- Verify file size is under 50MB
 - Check file format is supported (MP3, WAV, M4A, FLAC, OGG, WMA)
 - Review backend logs for specific errors
 

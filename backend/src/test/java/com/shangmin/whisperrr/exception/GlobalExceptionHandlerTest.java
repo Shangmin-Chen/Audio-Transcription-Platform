@@ -58,7 +58,7 @@ class GlobalExceptionHandlerTest {
     @Test
     void testHandleMaxUploadSizeExceededException_ReturnsPayloadTooLarge() {
         MaxUploadSizeExceededException ex = 
-            new MaxUploadSizeExceededException(1000 * 1024 * 1024);
+            new MaxUploadSizeExceededException(50 * 1024 * 1024);
         HttpServletRequest request = mock(HttpServletRequest.class);
         
         ResponseEntity<ErrorResponse> response = 
