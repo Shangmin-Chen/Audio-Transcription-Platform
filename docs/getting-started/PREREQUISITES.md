@@ -80,6 +80,61 @@ python3 -m pip --version
 
 **Note:** If you have multiple Python versions installed, you may need to use `python3.12` explicitly instead of `python3`.
 
+### ⚠️ CRITICAL: Virtual Environment Must Use Python 3.12
+
+**This is the most important step for Python setup!** When creating the virtual environment for the Python service, you **MUST** use Python 3.12 specifically. Using the wrong Python version will cause the service to fail.
+
+#### Creating the Virtual Environment
+
+**Always use Python 3.12 explicitly when creating the venv:**
+
+```bash
+# Correct way - explicitly use python3.12
+cd python-service
+python3.12 -m venv venv
+
+# If python3.12 is not available, check your installation
+# On macOS/Linux, you may need to use the full path:
+# /usr/local/bin/python3.12 -m venv venv
+# or
+# /opt/homebrew/bin/python3.12 -m venv venv
+```
+
+**❌ WRONG - Do NOT do this:**
+```bash
+# This may use a different Python version!
+python3 -m venv venv  # ❌ Don't use this
+python -m venv venv    # ❌ Don't use this
+```
+
+#### Verify Your Virtual Environment Uses Python 3.12
+
+After creating the venv, verify it's using the correct version:
+
+```bash
+# Activate the virtual environment
+source venv/bin/activate  # On macOS/Linux
+# or
+venv\Scripts\activate      # On Windows
+
+# Check the Python version in the venv
+python --version
+# Should output: Python 3.12.x
+
+# If it shows a different version, delete the venv and recreate it with python3.12
+```
+
+#### Why This Matters
+
+- The Python service dependencies are built for Python 3.12
+- Using a different Python version (even 3.11 or 3.13) can cause:
+  - Package installation failures
+  - Runtime errors
+  - Incompatibility with required libraries
+  - Transcription service failures
+
+**If you see errors about Python version or package compatibility, the first thing to check is whether your venv was created with Python 3.12.**
+
 ### Node.js and npm
 
 The React frontend requires Node.js 18 or higher and npm.
@@ -178,10 +233,13 @@ ffmpeg -version
 Before starting development, verify all prerequisites:
 
 - [ ] Java JDK 21 installed (`java -version` shows 21.x.x)
-- [ ] Python 3.12 installed (`python3 --version` shows 3.12.x)
+- [ ] Python 3.12 installed (`python3 --version` or `python3.12 --version` shows 3.12.x)
+- [ ] **⚠️ Virtual environment created with Python 3.12** (`cd python-service && source venv/bin/activate && python --version` shows 3.12.x)
 - [ ] Node.js 18+ installed (`node --version` shows v18.x or higher)
 - [ ] npm installed (`npm --version` shows version)
 - [ ] FFmpeg installed (`ffmpeg -version` shows version)
+
+**Important:** The virtual environment Python version check is critical! If your venv was created with the wrong Python version, the Python service will fail.
 
 ## Troubleshooting
 
@@ -197,6 +255,22 @@ Before starting development, verify all prerequisites:
 
 - **Wrong Python version:** Use `python3.12` explicitly instead of `python3` if you have multiple versions.
 - **pip not found:** Install pip: `python3.12 -m ensurepip --upgrade`
+- **⚠️ Virtual environment using wrong Python version:** This is the #1 cause of Python service issues!
+  - **Solution:** Delete the existing venv and recreate it with Python 3.12:
+    ```bash
+    # Remove old venv
+    rm -rf python-service/venv  # On macOS/Linux
+    # or
+    rmdir /s python-service\venv  # On Windows
+    
+    # Recreate with Python 3.12
+    cd python-service
+    python3.12 -m venv venv
+    source venv/bin/activate  # Activate it
+    python --version  # Verify it shows Python 3.12.x
+    ```
+  - **Check venv Python version:** After activating venv, run `python --version` - it MUST show Python 3.12.x
+  - **Common mistake:** Creating venv with `python3` or `python` instead of `python3.12` explicitly
 
 ### Node.js Version Issues
 

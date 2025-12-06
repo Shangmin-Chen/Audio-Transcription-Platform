@@ -118,9 +118,43 @@ The setup script checks prerequisites and configures environment variables:
 
 The script will:
 - Check prerequisites (Java, Python, Node.js, FFmpeg)
-- Prompt for host IP and ports
+- Ask if you want remote deployment mode (for multiple hosts per service)
+- Prompt for host IP and ports (single host mode) or multiple hosts per service (remote deployment mode)
 - Validate inputs
 - Save variables to `.env-export.sh`
+
+#### Remote Deployment Mode
+
+When prompted "Set up for remote deployment? (y/N)", choose:
+
+- **No (default)**: Simple single-host configuration
+  - Enter one host IP/domain and ports for each service
+  - Suitable for most development scenarios
+
+- **Yes**: Multi-host configuration
+  - Configure multiple hosts per service (e.g., domain + IP)
+  - Useful for scenarios like:
+    - Cloudflare tunnel (domain) + direct IP access
+    - Multiple network interfaces
+    - Load balancing setups
+  - The script will prompt you to add multiple hosts for each service
+  - CORS will be configured with all frontend URLs (for backend) and all frontend + backend URLs (for Python service)
+
+**Example Remote Deployment Flow:**
+```
+Set up for remote deployment? (y/N): y
+
+Frontend Service Configuration
+Enter the frontend host (IP or domain): x.y.com
+Enter the frontend port: 3737
+Add more frontend hosts? (y/N): y
+Enter the frontend host (IP or domain): 192.168.1.100
+Enter the frontend port: 3737
+Add more frontend hosts? (y/N): n
+
+Backend Service Configuration
+...
+```
 
 #### Step 2: Activate Environment Variables
 
@@ -222,6 +256,17 @@ export WHISPERRR_SERVICE_URL=http://192.168.1.100:5001
 export CORS_ALLOWED_ORIGINS=http://192.168.1.100:3737
 export CORS_ORIGINS=http://192.168.1.100:3737,http://192.168.1.100:7331
 ```
+
+#### Multiple Hosts (Remote Deployment Mode)
+```bash
+# Example: Cloudflare tunnel domain + direct IP access
+export REACT_APP_API_URL=http://x.y.com:7331/api
+export WHISPERRR_SERVICE_URL=http://x.y.com:5001
+export CORS_ALLOWED_ORIGINS=http://x.y.com:3737,http://192.168.1.100:3737
+export CORS_ORIGINS=http://x.y.com:3737,http://192.168.1.100:3737,http://x.y.com:7331,http://192.168.1.100:7331
+```
+
+**Note:** Use the setup script's remote deployment mode to configure multiple hosts easily. The script will generate the correct comma-separated CORS configuration automatically.
 
 #### Custom Ports
 ```bash

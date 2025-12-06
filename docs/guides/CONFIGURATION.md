@@ -157,7 +157,12 @@ timeout = settings.ffmpeg_conversion_timeout_seconds
 |----------|-------------|---------|
 | `SERVER_PORT` | Server port | `7331` |
 | `WHISPERRR_SERVICE_URL` | Python service URL | `http://python-service:5001` |
-| `CORS_ALLOWED_ORIGINS` | Allowed CORS origins | `http://localhost:3737,http://localhost:3738` |
+| `CORS_ALLOWED_ORIGINS` | Allowed CORS origins (comma-separated) | `http://localhost:3737,http://localhost:3738` |
+
+**CORS Configuration:**
+- Supports comma-separated list of frontend URLs
+- Example: `http://example.com:3737,http://192.168.1.100:3737`
+- Supports wildcard (`*`) for dynamic tunnel URLs (e.g., Cloudflare)
 
 ### Frontend Environment Variables
 
@@ -175,9 +180,14 @@ See [Environment Variables Reference](ENVIRONMENT_VARIABLES.md) for complete lis
 **Common variables:**
 - `MODEL_SIZE` - Whisper model size (default: `base`)
 - `MAX_FILE_SIZE_MB` - Max file size in MB (default: `50`)
-- `CORS_ORIGINS` - CORS allowed origins
+- `CORS_ORIGINS` - CORS allowed origins (comma-separated list of frontend + backend URLs)
 - `LOG_LEVEL` - Log level (default: `INFO`)
 - `SERVER_PORT` - Server port (default: `5001`)
+
+**CORS Configuration:**
+- `CORS_ORIGINS` should include both frontend and backend URLs
+- Format: comma-separated list (e.g., `http://frontend:3737,http://backend:7331`)
+- Example with multiple hosts: `http://example.com:3737,http://192.168.1.100:3737,http://example.com:7331,http://192.168.1.100:7331`
 
 ---
 
@@ -211,6 +221,59 @@ services:
 
 ---
 
+## Multi-Host Configuration (Remote Deployment)
+
+For remote deployment scenarios where you need to configure multiple hosts per service (e.g., domain + IP address), use the setup script's remote deployment mode:
+
+```bash
+./setup-env.sh
+# When prompted: "Set up for remote deployment? (y/N)", answer "y"
+```
+
+### Use Cases
+
+- **Cloudflare Tunnel**: Configure both tunnel domain and direct IP access
+- **Multiple Network Interfaces**: Access via different network paths
+- **Load Balancing**: Multiple entry points to services
+- **Development + Production**: Test with both local and remote URLs
+
+### How It Works
+
+1. The script prompts for multiple hosts per service (Frontend, Backend, Python)
+2. For each service, you can add multiple host:port pairs
+3. URLs are automatically constructed from host:port pairs
+4. CORS is configured with:
+   - **Backend**: All frontend URLs (comma-separated)
+   - **Python Service**: All frontend URLs + all backend URLs (comma-separated)
+
+### Example Configuration
+
+**Setup Script Output:**
+```
+Frontend Hosts:
+  x.y.com:3737 -> http://x.y.com:3737
+  192.168.1.100:3737 -> http://192.168.1.100:3737
+
+Backend Hosts:
+  x.y.com:7331 -> http://x.y.com:7331
+  192.168.1.100:7331 -> http://192.168.1.100:7331
+
+CORS_ALLOWED_ORIGINS=http://x.y.com:3737,http://192.168.1.100:3737
+CORS_ORIGINS=http://x.y.com:3737,http://192.168.1.100:3737,http://x.y.com:7331,http://192.168.1.100:7331
+```
+
+### Manual Configuration
+
+If you prefer to set variables manually for multi-host scenarios:
+
+```bash
+# Multiple frontend URLs for backend CORS
+export CORS_ALLOWED_ORIGINS="http://example.com:3737,http://192.168.1.100:3737"
+
+# Frontend + backend URLs for Python service CORS
+export CORS_ORIGINS="http://example.com:3737,http://192.168.1.100:3737,http://example.com:7331,http://192.168.1.100:7331"
+```
+
 ## Best Practices
 
 ### Configuration Management
@@ -223,7 +286,11 @@ services:
    - Override defaults via environment variables
    - Never hardcode values in code
 
-3. **Document All Options:**
+3. **Use Setup Script for Multi-Host:**
+   - For remote deployment with multiple hosts, use `setup-env.sh` remote deployment mode
+   - The script validates inputs and generates correct CORS configuration
+
+4. **Document All Options:**
    - Keep configuration files well-documented
    - Update this guide when adding new options
 

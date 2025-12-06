@@ -11,6 +11,7 @@ import org.springframework.web.servlet.config.annotation.WebMvcConfigurer;
 
 import java.util.Arrays;
 import java.util.List;
+import java.util.stream.Collectors;
 
 /**
  * Cross-Origin Resource Sharing (CORS) configuration for frontend communication.
@@ -26,6 +27,7 @@ import java.util.List;
  *   <li><strong>Frontend:</strong> React app running on http://localhost:3737 (development)</li>
  *   <li><strong>Backend:</strong> Spring Boot API running on http://localhost:7331</li>
  *   <li><strong>Production:</strong> Frontend and backend may be on different domains</li>
+ *   <li><strong>Tunnels:</strong> Supports dynamic tunnel URLs (Cloudflare, Tailscale) via wildcard pattern</li>
  * </ul>
  * 
  * <h3>Security Considerations:</h3>
@@ -41,7 +43,7 @@ import java.util.List;
  * <p>CORS settings are externalized in application.properties for easy environment-specific
  * configuration without code changes:</p>
  * <ul>
- *   <li>cors.allowed-origins: Comma-separated list of allowed frontend URLs</li>
+ *   <li>cors.allowed-origins: Comma-separated list of allowed frontend URLs, or "*" for all origins (useful for dynamic tunnel URLs)</li>
  *   <li>cors.allowed-methods: HTTP methods permitted for cross-origin requests</li>
  *   <li>cors.allowed-headers: Headers that can be sent in cross-origin requests</li>
  *   <li>cors.allow-credentials: Whether to include cookies/auth in requests</li>
@@ -108,11 +110,17 @@ public class CorsConfig implements WebMvcConfigurer {
      * 
      * <h4>Configuration Properties Used:</h4>
      * <ul>
-     *   <li><strong>cors.allowed-origins:</strong> Frontend URLs (e.g., "http://localhost:3737,https://myapp.com")</li>
+     *   <li><strong>cors.allowed-origins:</strong> Frontend URLs (e.g., "http://localhost:3737,https://myapp.com") or "*" for all origins (useful for dynamic tunnel URLs like Cloudflare)</li>
      *   <li><strong>cors.allowed-methods:</strong> HTTP methods (e.g., "GET,POST,PUT,DELETE,OPTIONS")</li>
      *   <li><strong>cors.allowed-headers:</strong> Request headers (e.g., "*" or specific headers)</li>
      *   <li><strong>cors.allow-credentials:</strong> Cookie/auth support (true/false)</li>
      * </ul>
+     * 
+     * <h4>Dynamic Tunnel Support:</h4>
+     * <p>When <code>cors.allowed-origins</code> is set to "*", this configuration uses
+     * <code>allowedOriginPatterns("*")</code> to support dynamic tunnel URLs (e.g., 
+     * Cloudflare tunnel, Tailscale). This approach works with credentials enabled,
+     * unlike the deprecated <code>allowedOrigins("*")</code> method.</p>
      * 
      * <h4>Preflight Optimization:</h4>
      * <p>Sets max-age to 3600 seconds (1 hour) to cache preflight responses and reduce
@@ -122,12 +130,24 @@ public class CorsConfig implements WebMvcConfigurer {
      */
     @Override
     public void addCorsMappings(CorsRegistry registry) {
-        registry.addMapping("/api/**")
-                .allowedOrigins(allowedOrigins.split(","))
+        var corsRegistration = registry.addMapping("/api/**")
                 .allowedMethods(allowedMethods.split(","))
                 .allowedHeaders(allowedHeaders.split(","))
                 .allowCredentials(allowCredentials)
                 .maxAge(3600);
+        
+        // Support wildcard pattern for dynamic tunnel URLs (e.g., Cloudflare, Tailscale)
+        // Using allowedOriginPatterns instead of allowedOrigins to support credentials with wildcard
+        if ("*".equals(allowedOrigins.trim())) {
+            corsRegistration.allowedOriginPatterns("*");
+        } else {
+            // Parse comma-separated origins and use as patterns for flexibility
+            String[] originArray = allowedOrigins.split(",");
+            String[] trimmedOrigins = Arrays.stream(originArray)
+                    .map(String::trim)
+                    .toArray(String[]::new);
+            corsRegistration.allowedOriginPatterns(trimmedOrigins);
+        }
     }
 
     /**
@@ -152,9 +172,14 @@ public class CorsConfig implements WebMvcConfigurer {
      * that CORS rules only apply to API endpoints and not to static resources or
      * other application paths.</p>
      * 
+     * <h4>Dynamic Tunnel Support:</h4>
+     * <p>When <code>cors.allowed-origins</code> is set to "*", this configuration uses
+     * <code>setAllowedOriginPatterns("*")</code> to support dynamic tunnel URLs. This
+     * approach works with credentials enabled, unlike the deprecated wildcard origins.</p>
+     * 
      * <h4>Security Considerations:</h4>
      * <ul>
-     *   <li>Uses origin patterns instead of wildcards for better security</li>
+     *   <li>Uses origin patterns instead of wildcard origins for better security and credential support</li>
      *   <li>Explicit method and header allowlists</li>
      *   <li>Configurable credential support based on security requirements</li>
      *   <li>Reasonable cache timeout to balance performance and security</li>
@@ -176,9 +201,18 @@ public class CorsConfig implements WebMvcConfigurer {
     public CorsConfigurationSource corsConfigurationSource() {
         CorsConfiguration configuration = new CorsConfiguration();
         
-        List<String> origins = Arrays.asList(allowedOrigins.split(","));
-        // Use setAllowedOrigins for consistency with WebMvcConfigurer
-        configuration.setAllowedOrigins(origins);
+        // Support wildcard pattern for dynamic tunnel URLs
+        // Using allowedOriginPatterns instead of allowedOrigins to support credentials with wildcard
+        if ("*".equals(allowedOrigins.trim())) {
+            configuration.setAllowedOriginPatterns(Arrays.asList("*"));
+        } else {
+            // Parse comma-separated origins and use as patterns for flexibility
+            List<String> origins = Arrays.stream(allowedOrigins.split(","))
+                    .map(String::trim)
+                    .collect(Collectors.toList());
+            configuration.setAllowedOriginPatterns(origins);
+        }
+        
         configuration.setAllowedMethods(Arrays.asList(allowedMethods.split(",")));
         configuration.setAllowedHeaders(Arrays.asList(allowedHeaders.split(",")));
         configuration.setAllowCredentials(allowCredentials);
