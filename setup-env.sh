@@ -461,6 +461,90 @@ EOF
 echo -e "${GREEN}✓ Python service .env file created at ${PYTHON_ENV_FILE}${NC}"
 echo ""
 
+# Generate cleanup script
+CLEANUP_SCRIPT="cleanup-env.sh"
+echo -e "${BLUE}Generating cleanup script...${NC}"
+cat > "$CLEANUP_SCRIPT" << 'CLEANUP_EOF'
+#!/bin/bash
+
+# Whisperrr Cleanup Script
+# Interactive script to reset services to default localhost configuration
+# by removing .env files from each service directory.
+#
+# This script will:
+# - Prompt you for each service (Frontend, Backend, Python Service)
+# - Ask if you want to delete its .env file
+# - Default answer is "yes" (press Enter to confirm)
+# - Only prompt for services that have .env files
+
+# Colors for output
+GREEN='\033[0;32m'
+YELLOW='\033[1;33m'
+BLUE='\033[0;34m'
+RED='\033[0;31m'
+NC='\033[0m' # No Color
+
+echo -e "${BLUE}╔════════════════════════════════════════════════════════════╗${NC}"
+echo -e "${BLUE}║          Whisperrr Cleanup Script                          ║${NC}"
+echo -e "${BLUE}╚════════════════════════════════════════════════════════════╝${NC}"
+echo ""
+echo -e "${YELLOW}This script will help you remove .env files to reset services to defaults.${NC}"
+echo ""
+
+# Function to cleanup a service's .env file
+cleanup_service_env() {
+    local service_name=$1
+    local env_file=$2
+    
+    if [ -f "$env_file" ]; then
+        echo -e "${YELLOW}Found ${service_name} .env file: ${env_file}${NC}"
+        read -p "Delete ${service_name} .env file? [Y/n]: " confirm
+        confirm=${confirm:-Y}
+        
+        if [[ $confirm =~ ^[Yy]$ ]]; then
+            rm -f "$env_file"
+            if [ ! -f "$env_file" ]; then
+                echo -e "${GREEN}✓ Deleted ${service_name} .env file${NC}"
+                return 0
+            else
+                echo -e "${RED}✗ Failed to delete ${service_name} .env file${NC}"
+                return 1
+            fi
+        else
+            echo -e "${BLUE}  Skipped ${service_name} .env file${NC}"
+            return 0
+        fi
+    else
+        echo -e "${BLUE}  No ${service_name} .env file found (already using defaults)${NC}"
+        return 0
+    fi
+}
+
+# Cleanup each service
+echo -e "${BLUE}Checking for .env files...${NC}"
+echo ""
+
+cleanup_service_env "Frontend" "frontend/.env"
+echo ""
+
+cleanup_service_env "Backend" "backend/.env"
+echo ""
+
+cleanup_service_env "Python Service" "python-service/.env"
+echo ""
+
+echo -e "${GREEN}════════════════════════════════════════════════════════════${NC}"
+echo -e "${GREEN}Cleanup Complete!${NC}"
+echo ""
+echo -e "${YELLOW}Next Steps:${NC}"
+echo "  • Restart services to use default configuration"
+echo "  • To reconfigure, run: ./setup-env.sh"
+echo ""
+CLEANUP_EOF
+
+chmod +x "$CLEANUP_SCRIPT"
+echo -e "${GREEN}✓ Cleanup script created at ${CLEANUP_SCRIPT}${NC}"
+echo ""
 
 echo -e "${GREEN}════════════════════════════════════════════════════════════${NC}"
 echo -e "${GREEN}Setup Complete!${NC}"

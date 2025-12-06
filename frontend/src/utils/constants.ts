@@ -92,23 +92,51 @@ export const TRANSCRIPTION_CONFIG = {
 
 /**
  * API configuration constants.
+ * Uses runtime hostname detection to automatically select the appropriate backend URL.
  */
-const resolvedApiUrl = process.env.REACT_APP_API_URL || 'http://localhost:7331/api';
+const getApiUrl = (): string => {
+  // Allow explicit override via environment variable
+  if (process.env.REACT_APP_API_URL) {
+    return process.env.REACT_APP_API_URL;
+  }
+  
+  // Runtime hostname detection
+  if (typeof window !== 'undefined') {
+    const hostname = window.location.hostname;
+    if (hostname === 'localhost' || hostname === '127.0.0.1') {
+      return 'http://localhost:7331/api';
+    }
+    // For all other hostnames (shangmin.me, Tailscale IP, etc.)
+    return 'http://100.76.98.121:7331/api';
+  }
+  
+  // Fallback for SSR/build time
+  return 'http://localhost:7331/api';
+};
 
-// Enhanced debug logging to show which API URL is being used
-// This helps diagnose environment variable loading issues
+const resolvedApiUrl = getApiUrl();
+
+// Enhanced debug logging to show which API URL is being used and why
 console.log('[API Config] ============================================');
 console.log('[API Config] Environment Variable Debug Info:');
 console.log('[API Config]   REACT_APP_API_URL:', process.env.REACT_APP_API_URL || '(not set)');
 console.log('[API Config]   NODE_ENV:', process.env.NODE_ENV || '(not set)');
-console.log('[API Config]   Resolved API URL:', resolvedApiUrl);
-if (process.env.REACT_APP_API_URL) {
-  console.log('[API Config]   ✓ Using API URL from environment variable');
-} else {
-  console.warn('[API Config]   ⚠ WARNING: Using fallback API URL (REACT_APP_API_URL not set)');
-  console.warn('[API Config]   ⚠ Make sure frontend/.env file exists and contains REACT_APP_API_URL');
-  console.warn('[API Config]   ⚠ Restart the dev server after creating/updating frontend/.env');
+if (typeof window !== 'undefined') {
+  console.log('[API Config]   Current hostname:', window.location.hostname);
 }
+if (process.env.REACT_APP_API_URL) {
+  console.log('[API Config]   ✓ Using API URL from environment variable (override)');
+} else if (typeof window !== 'undefined') {
+  const hostname = window.location.hostname;
+  if (hostname === 'localhost' || hostname === '127.0.0.1') {
+    console.log('[API Config]   ✓ Using localhost backend (runtime hostname detection)');
+  } else {
+    console.log('[API Config]   ✓ Using Tailscale IP backend (runtime hostname detection)');
+  }
+} else {
+  console.warn('[API Config]   ⚠ Using fallback localhost (SSR/build time, window not available)');
+}
+console.log('[API Config]   Resolved API URL:', resolvedApiUrl);
 console.log('[API Config] ============================================');
 
 export const API_CONFIG = {
