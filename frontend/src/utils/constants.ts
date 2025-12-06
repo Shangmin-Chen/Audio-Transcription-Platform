@@ -93,9 +93,20 @@ export const TRANSCRIPTION_CONFIG = {
 /**
  * API configuration constants.
  */
+const resolvedApiUrl = process.env.REACT_APP_API_URL || 'http://localhost:7331/api';
+
+// Debug logging to show which API URL is being used
+if (process.env.NODE_ENV === 'development') {
+  if (process.env.REACT_APP_API_URL) {
+    console.log('[API Config] Using API URL from environment variable:', resolvedApiUrl);
+  } else {
+    console.warn('[API Config] Using fallback API URL (REACT_APP_API_URL not set):', resolvedApiUrl);
+  }
+}
+
 export const API_CONFIG = {
   /** Default API base URL. */
-  BASE_URL: process.env.REACT_APP_API_URL || 'http://localhost:7331/api',
+  BASE_URL: resolvedApiUrl,
   
   /** Request timeout in milliseconds (0 = no timeout for long-running jobs). */
   TIMEOUT: 0,
