@@ -422,24 +422,51 @@ cat python-service/.env
 
 ### Frontend Can't Find Backend
 
-**Symptom:** Frontend shows network errors when trying to connect to backend
+**Symptom:** Frontend shows network errors when trying to connect to backend, or frontend calls localhost instead of configured URL
 
 **Solution:**
 1. Verify `frontend/.env` contains correct `REACT_APP_API_URL`
-2. Restart frontend after creating/updating `frontend/.env` (React reads env vars at start time)
-3. Check browser console for exact error message
+2. **CRITICAL: Restart the React dev server** after creating/updating `frontend/.env`
+   - React reads environment variables only at dev server start time (not runtime)
+   - Stop the dev server (Ctrl+C) and run `npm start` again
+   - Changes to `.env` files do NOT take effect until restart
+3. Check browser console for API configuration debug messages (look for `[API Config]` logs)
 4. Verify backend is running and accessible
 
 **Debug:**
 ```bash
-# Check frontend .env file
+# Check frontend .env file exists and has correct value
 cat frontend/.env
+
+# Verify the value is correct (should match your backend URL)
+# Example: REACT_APP_API_URL=http://100.76.98.121:7331/api
 
 # Test backend directly
 curl http://your-backend-url/api/audio/health
 
-# Check frontend config in browser console
+# Check browser console for:
+# - [API Config] logs showing which URL is being used
+# - [API Client] logs showing actual API requests
 ```
+
+**Common Mistakes:**
+- ✅ Created `frontend/.env` but forgot to restart dev server
+- ✅ Updated `frontend/.env` but dev server was already running
+- ✅ `.env` file has wrong path or wrong variable name (must be `REACT_APP_API_URL`)
+- ✅ `.env` file has syntax errors (missing `=` sign, quotes in value, etc.)
+
+**Verification:**
+When you start the frontend dev server, check the browser console. You should see:
+```
+[API Config] ============================================
+[API Config] Environment Variable Debug Info:
+[API Config]   REACT_APP_API_URL: http://100.76.98.121:7331/api
+[API Config]   Resolved API URL: http://100.76.98.121:7331/api
+[API Config]   ✓ Using API URL from environment variable
+[API Config] ============================================
+```
+
+If you see "REACT_APP_API_URL: (not set)" or "Using fallback API URL", the `.env` file is not being read - restart the dev server.
 
 ### Python Service Issues
 

@@ -141,7 +141,19 @@ REACT_APP_API_URL=http://192.168.1.100:7331/api
 REACT_APP_MAX_FILE_SIZE=50  # in MB
 ```
 
-**Note:** These must be set before `npm start` (React reads env vars at start time, not runtime).
+**⚠️ Important Notes:**
+- React reads environment variables **only at dev server start time** (not at runtime)
+- The `.env` file **must exist before** running `npm start`
+- **You must restart the dev server** after creating or updating `frontend/.env`
+- Changes to `.env` files do NOT take effect until you stop and restart `npm start`
+- Check browser console for `[API Config]` debug messages to verify which URL is being used
+
+**Troubleshooting:**
+If the frontend is still calling localhost instead of your configured URL:
+1. Verify `frontend/.env` exists and contains `REACT_APP_API_URL=http://your-host:port/api`
+2. **Stop the dev server** (Ctrl+C) and restart it: `npm start`
+3. Check browser console - you should see `[API Config]` logs showing the configured URL
+4. If you see "REACT_APP_API_URL: (not set)", the `.env` file is not being read - verify file location and restart dev server
 
 **Reset to Defaults:**
 ```bash

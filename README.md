@@ -130,8 +130,8 @@ If services run on different hosts or custom ports, use the setup script to conf
 # Run the interactive setup script
 ./setup-env.sh
 
-# Source the export file to activate variables
-source .env-export.sh
+# Each service automatically reads its .env file at startup
+# No need to source any files - just restart services after running setup-env.sh
 
 # Then start services as described above
 ```
@@ -169,6 +169,12 @@ For detailed setup instructions including remote deployment mode, see the [Quick
 - **Port 3737 already in use**: Change port in `frontend/package.json` scripts section
 - **npm install fails**: Try clearing cache: `npm cache clean --force`
 - **Node/npm version issues**: Ensure you have the correct Node.js and npm versions. See [Prerequisites Guide](docs/getting-started/PREREQUISITES.md) for version requirements and installation.
+- **Frontend calling localhost instead of configured URL**: 
+  - Verify `frontend/.env` file exists and contains `REACT_APP_API_URL`
+  - **IMPORTANT:** React reads environment variables only at dev server start time
+  - **You must restart the dev server** after creating/updating `frontend/.env` file
+  - Stop the dev server (Ctrl+C) and run `npm start` again
+  - Check browser console for API configuration debug messages
 
 ## 📁 Project Structure
 
@@ -191,7 +197,8 @@ For **remote development or custom ports**, use the setup script:
 
 ```bash
 ./setup-env.sh
-source .env-export.sh
+# Script automatically creates .env files for each service
+# Restart services after running setup-env.sh to apply changes
 ```
 
 The setup script automatically configures all required environment variables. It supports:

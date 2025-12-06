@@ -95,14 +95,21 @@ export const TRANSCRIPTION_CONFIG = {
  */
 const resolvedApiUrl = process.env.REACT_APP_API_URL || 'http://localhost:7331/api';
 
-// Debug logging to show which API URL is being used
-if (process.env.NODE_ENV === 'development') {
-  if (process.env.REACT_APP_API_URL) {
-    console.log('[API Config] Using API URL from environment variable:', resolvedApiUrl);
-  } else {
-    console.warn('[API Config] Using fallback API URL (REACT_APP_API_URL not set):', resolvedApiUrl);
-  }
+// Enhanced debug logging to show which API URL is being used
+// This helps diagnose environment variable loading issues
+console.log('[API Config] ============================================');
+console.log('[API Config] Environment Variable Debug Info:');
+console.log('[API Config]   REACT_APP_API_URL:', process.env.REACT_APP_API_URL || '(not set)');
+console.log('[API Config]   NODE_ENV:', process.env.NODE_ENV || '(not set)');
+console.log('[API Config]   Resolved API URL:', resolvedApiUrl);
+if (process.env.REACT_APP_API_URL) {
+  console.log('[API Config]   ✓ Using API URL from environment variable');
+} else {
+  console.warn('[API Config]   ⚠ WARNING: Using fallback API URL (REACT_APP_API_URL not set)');
+  console.warn('[API Config]   ⚠ Make sure frontend/.env file exists and contains REACT_APP_API_URL');
+  console.warn('[API Config]   ⚠ Restart the dev server after creating/updating frontend/.env');
 }
+console.log('[API Config] ============================================');
 
 export const API_CONFIG = {
   /** Default API base URL. */
